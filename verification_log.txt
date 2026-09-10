@@ -1,0 +1,245 @@
+Trudvsem (Работа России) open data -- feasibility check
+run at 2026-09-11 00:07:49
+python 3.14.6 on win32
+
+==============================================================================
+CHECK 1 -- connectivity and national volume
+==============================================================================
+  OK  https://opendata.trudvsem.ru/api/v1/vacancies
+  vacancies published nationally : 522,303
+  no authentication required     : yes
+
+==============================================================================
+CHECK 2 -- IT volume by keyword (national and by region)
+==============================================================================
+  keyword                      RUSSIA          край        Москва       область
+  программист                   2,089            23           220            97
+  разработчик                     742            11           167            37
+  python                          431             5           144            21
+  1С                            9,042           133           592           327
+  аналитик данных                 511            19           118            11
+  тестировщик                      79             1            19             7
+  системный администратор         894             9            44            16
+  инженер-программист             996            15            83            46
+  -----------------------------------------------------------------------------
+  TOTAL (sum, has overlap)     14,784           216         1,387           562
+
+==============================================================================
+CHECK 3 -- verify region_code really filters
+==============================================================================
+  The API SILENTLY IGNORES unknown parameter names, so a wrong name
+  returns the whole country with no error. Always check the region
+  name that comes back.
+
+  OK region_code=59   expected=Пермский край          returned=Пермский край
+  OK region_code=77   expected=Город Москва           returned=Город Москва
+  OK region_code=66   expected=Свердловская область   returned=Свердловская область
+
+  Wrong parameter names, for the record:
+    regionCode   -> total=2089 returned_region=Волгоградская область  (ignored)
+    regionId     -> total=2089 returned_region=Волгоградская область  (ignored)
+    area         -> total=2089 returned_region=Волгоградская область  (ignored)
+    regionName   -> total=2089 returned_region=Волгоградская область  (ignored)
+
+==============================================================================
+CHECK 4 -- real harvest (proves the collector works end to end)
+==============================================================================
+  recipe: 8 keywords x 3 regions, limit=10 offset sweep, max 50/query
+    программист                region 59   found=    23  collected= 10  new_total=10
+    программист                region 77   found=   220  collected= 30  new_total=40
+    программист                region 66   found=    97  collected= 10  new_total=50
+    разработчик                region 59   found=    11  collected= 10  new_total=60
+    разработчик                region 77   found=   167  collected= 20  new_total=79
+    разработчик                region 66   found=    37  collected= 10  new_total=89
+    python                     region 59   found=     5  collected=  5  new_total=91
+    python                     region 77   found=   144  collected= 20  new_total=111
+    python                     region 66   found=    21  collected= 10  new_total=117
+    1С                         region 59   found=   133  collected= 20  new_total=136
+    1С                         region 77   found=   592  collected= 50  new_total=185
+    1С                         region 66   found=   327  collected= 40  new_total=224
+    аналитик данных            region 59   found=    19  collected= 10  new_total=234
+    аналитик данных            region 77   found=   118  collected= 20  new_total=254
+    аналитик данных            region 66   found=    11  collected= 10  new_total=263
+    тестировщик                region 59   found=     1  collected=  1  new_total=263
+    тестировщик                region 77   found=    19  collected= 10  new_total=271
+    тестировщик                region 66   found=     7  collected=  7  new_total=278
+    системный администратор    region 59   found=     9  collected=  9  new_total=286
+    системный администратор    region 77   found=    44  collected= 10  new_total=295
+    системный администратор    region 66   found=    16  collected= 10  new_total=305
+    инженер-программист        region 59   found=    15  collected= 10  new_total=310
+    инженер-программист        region 77   found=    83  collected= 10  new_total=312
+    инженер-программист        region 66   found=    46  collected= 10  new_total=317
+
+  requests made      : 56
+  failed requests    : 0
+  unique vacancies   : 317
+  saved -> trudvsem_raw_harvest.json
+
+==============================================================================
+CHECK 5 -- salary coverage and the salary_min/salary_max problem
+==============================================================================
+  vacancies                              : 317
+  free-text `salary` present             : 317 (100%)
+  `salary_min` present                   : 308 (97%)
+  `salary_max` present                   : 287 (91%)
+
+  !!! salary_min == salary_max           : 97 of 286 (34%)
+      The portal writes the SAME value into both fields for open-ended
+      adverts like 'от 40000'. So salary_max looks populated but carries
+      no information. Any model that uses salary_max as an upper bound
+      is wrong. This is Stage 4 material.
+
+  free-text vs numeric disagreement (RegEx output vs API numbers):
+    parsed low != salary_min : 0
+
+  distinct raw `salary` shapes (first 15):
+      317  'от N'
+
+  currency values seen:
+      317  '«руб.»'
+
+==============================================================================
+CHECK 6 -- RegEx skill extraction from the free-text `requirements`
+==============================================================================
+  records whose `skills` field is EMPTY : 258/317 (81%)
+  -> the structured skill field is useless; skills must be mined from
+     `requirements` / `duty` free text. That is the RegEx work.
+
+  skill mentions found by RegEx across the harvest:
+    1С               134  ############################################################
+    python            52  #######################
+    sql               35  ###############
+    rest              30  #############
+    excel             29  ############
+    linux             26  ###########
+    git               19  ########
+    c++               18  ########
+    docker            17  #######
+    postgresql        17  #######
+    windows           11  ####
+    java              11  ####
+    javascript        11  ####
+    kubernetes         9  ####
+    django             7  ###
+    html               6  ##
+    sap                5  ##
+    typescript         5  ##
+    c#                 4  #
+    css                4  #
+    oracle             3  #
+    mysql              2  
+
+  experience requirements mined from free text:
+    1 year(s) : 10
+    2 year(s) : 3
+    3 year(s) : 7
+    5 year(s) : 4
+    7 year(s) : 7
+
+  worked examples:
+    Инженер-программист
+      salary='от 75000'  salary_min=75000
+      -> c++, git, linux
+      text: 'знание языков программирования С, С++ (в объёме стандарта C++14), Lua; знание принципов построения распределён'
+    Программист
+      salary='от 30000'  salary_min=30000
+      -> python, sql
+      text: '* Понимание ООП * Опыт промышленного программирования от 2 лет на языках: * PL/SQL Python Высшее техническое о'
+    Программист
+      salary='от 35000'  salary_min=35000
+      -> c#, docker, linux
+      text: 'знание C# (.Net Core); Linux (установка, настройка сети, работа с файловой системой); Jenkins, Gitlab CI; Prox'
+    Программист С#
+      salary='от 50000'  salary_min=50000
+      -> git, rest
+      text: 'Уверенное знание платформы Microsoft.NET (Framework 4.6 и выше); Уверенное знание языка С#; Понимание шаблона '
+    Программист 1С
+      salary='от 60000'  salary_min=60000
+      -> 1С
+      text: 'Опыт работы в 1С конфигурации Управление производственным предприятием; Знание 1С 8.2,8.3'
+    Программист
+      salary='от 60000'  salary_min=60000
+      -> 1С
+      text: 'Знание бух программы 1С. Дисциплинированность'
+
+==============================================================================
+CHECK 7 -- time axis
+==============================================================================
+  There is NO working date filter on the API:
+    {"date_from": "2026-09-01"}                          total=522,303 (ignored -> unfiltered)
+    {"dateFrom": "2026-09-01"}                           total=522,303 (ignored -> unfiltered)
+    {"date": "2026-09-01"}                               total=522,303 (ignored -> unfiltered)
+    {"modifiedFrom": "2026-09-01", "modifiedTo": "2026-09-02"} HTTP 500
+
+  -> History must be accumulated by taking a snapshot every day.
+     Every record carries `creation-date` and `date_modify`, so a daily
+     snapshot run yields a genuine time axis for the validation stage.
+
+  creation-date months present in this harvest:
+    2020-08 : 1
+    2022-02 : 1
+    2022-04 : 1
+    2022-06 : 2
+    2023-01 : 1
+    2023-03 : 1
+    2023-04 : 1
+    2024-01 : 1
+    2024-02 : 1
+    2024-04 : 1
+    2024-05 : 1
+    2024-07 : 2
+    2024-08 : 1
+    2024-11 : 2
+    2024-12 : 1
+    2025-02 : 4
+    2025-03 : 2
+    2025-04 : 5
+    2025-05 : 6
+    2025-06 : 4
+    2025-07 : 5
+    2025-08 : 14
+    2025-09 : 11
+    2025-10 : 9
+    2025-11 : 6
+    2025-12 : 7
+    2026-01 : 17
+    2026-02 : 10
+    2026-03 : 10
+    2026-04 : 16
+    2026-05 : 13
+    2026-06 : 31
+    2026-07 : 31
+    2026-08 : 62
+    2026-09 : 36
+
+==============================================================================
+CHECK 8 -- cross-alphabet trap (this is why the RegEx stage needs tests)
+==============================================================================
+  Does re.IGNORECASE bridge the two alphabets?
+    latin pattern r'c\+\+' vs Latin   'C++' : True
+    latin pattern r'c\+\+' vs Cyrillic 'С++' : False   <-- silently missed
+    latin pattern r'c#''   vs Cyrillic 'С#'  : False   <-- silently missed
+
+  C++ vacancies matched with the Latin spelling  : 18
+  C++ vacancies written with a Cyrillic С        : 10
+  ...of which the naive pattern MISSES entirely  : 8
+  => false-negative rate on C++                  : 8/26 (31%)
+  same problem on C#                             : 1 missed
+
+  Real records a naive pattern fails to match:
+    Младший программист
+      ...1. Опыт программирования от 1 года; 2. Знание языков С и С++ на базовом/среднем уровне; 3. Базовое понимание шейдерных я...
+    Инженер-программист
+      ...ений, пакетов, компилятора; - знание языка программирования С++ на уровне не ниже хорошо; - знание библиотеки QT 4.4, QT 5;...
+    Ведущий программист С++(Qt)
+      ...бности программного обеспечения на языке программирования С/С++; Знание основ математического моделирования технических сис...
+    Инженер-программист
+      ...Опыт работы и знание языков программирования (С, С++, Delphi, labview, Pyton), знания и опыт в области цифровой ...
+
+  -> the fix is to normalise that code point before matching, and the
+     parametrised unit test in Stage 4 pins it down.
+
+==============================================================================
+DONE -- all source checks passed against the live API.
+  raw_samples/ holds the downloaded data; this log is the evidence.
+==============================================================================

@@ -1,0 +1,93 @@
+Trudvsem collection -- Stage 1
+run at 2026-09-17 18:02:16
+budget: 2200 requests / 2700 s   workers: 8   phase: both
+
+==============================================================================
+REGION DIRECTORY
+==============================================================================
+  probing 52 region codes ...
+  region directory: 78 regions
+
+
+------------------------------------------------------------------------------
+PHASE 1a -- IT national sweep -- 18 keywords (national only)
+------------------------------------------------------------------------------
+       18/18 cells  store=   1013 req=   97  0.4 cell/s  ETA 0.0 min
+  -> trudvsem_it_harvest.json: 1,013 unique vacancies (1,013 added this phase)
+
+------------------------------------------------------------------------------
+PHASE 1b -- control national sweep -- 10 keywords (national only)
+------------------------------------------------------------------------------
+       10/10 cells  store=   1000 req=  137  0.3 cell/s  ETA 0.0 min
+  -> trudvsem_control_harvest.json: 1,000 unique vacancies (1,000 added this phase)
+
+------------------------------------------------------------------------------
+PHASE 2a -- IT keyword x region grid -- 18 keywords x 78 regions
+------------------------------------------------------------------------------
+       50/1404 cells  store=   1853 req=  195  1.3 cell/s  ETA 17.1 min
+      100/1404 cells  store=   2580 req=  248  1.3 cell/s  ETA 16.7 min
+      150/1404 cells  store=   2893 req=  301  1.3 cell/s  ETA 16.0 min
+      200/1404 cells  store=   2944 req=  354  1.3 cell/s  ETA 15.4 min
+      250/1404 cells  store=   4194 req=  426  1.2 cell/s  ETA 15.9 min
+      300/1404 cells  store=   7742 req=  536  1.1 cell/s  ETA 16.8 min
+      350/1404 cells  store=   8210 req=  594  1.1 cell/s  ETA 15.8 min
+      400/1404 cells  store=   8405 req=  647  1.1 cell/s  ETA 14.8 min
+      450/1404 cells  store=   8405 req=  697  1.1 cell/s  ETA 14.1 min
+      500/1404 cells  store=   8628 req=  747  1.1 cell/s  ETA 13.2 min
+      550/1404 cells  store=   9049 req=  797  1.1 cell/s  ETA 12.4 min
+      600/1404 cells  store=   9049 req=  847  1.1 cell/s  ETA 11.7 min
+      650/1404 cells  store=   9113 req=  897  1.2 cell/s  ETA 10.9 min
+      700/1404 cells  store=   9113 req=  947  1.2 cell/s  ETA 10.1 min
+      750/1404 cells  store=   9113 req=  997  1.2 cell/s  ETA 9.3 min
+      800/1404 cells  store=   9113 req= 1047  1.2 cell/s  ETA 8.5 min
+      850/1404 cells  store=   9113 req= 1097  1.2 cell/s  ETA 7.7 min
+      900/1404 cells  store=   9113 req= 1147  1.2 cell/s  ETA 7.0 min
+      950/1404 cells  store=   9113 req= 1197  1.2 cell/s  ETA 6.3 min
+     1000/1404 cells  store=   9113 req= 1247  1.2 cell/s  ETA 5.6 min
+     1050/1404 cells  store=   9113 req= 1297  1.2 cell/s  ETA 4.9 min
+     1100/1404 cells  store=   9113 req= 1347  1.2 cell/s  ETA 4.2 min
+     1150/1404 cells  store=   9113 req= 1397  1.2 cell/s  ETA 3.5 min
+     1200/1404 cells  store=   9118 req= 1447  1.2 cell/s  ETA 2.8 min
+     1250/1404 cells  store=   9205 req= 1497  1.2 cell/s  ETA 2.1 min
+     1300/1404 cells  store=  11469 req= 1551  1.2 cell/s  ETA 1.4 min
+     1350/1404 cells  store=  12656 req= 1615  1.2 cell/s  ETA 0.7 min
+     1400/1404 cells  store=  12656 req= 1661  1.2 cell/s  ETA 0.1 min
+     1404/1404 cells  store=  12656 req= 1661  1.2 cell/s  ETA 0.0 min
+  -> trudvsem_it_harvest.json: 12,656 unique vacancies (12,656 added this phase)
+
+------------------------------------------------------------------------------
+PHASE 2b -- control keyword x region grid -- 10 keywords x 11 regions
+------------------------------------------------------------------------------
+       50/110 cells  store=   6443 req= 1870  0.4 cell/s  ETA 2.4 min
+      100/110 cells  store=   9648 req= 1999  0.5 cell/s  ETA 0.3 min
+      110/110 cells  store=   9731 req= 2002  0.5 cell/s  ETA 0.0 min
+  -> trudvsem_control_harvest.json: 9,731 unique vacancies (9,731 added this phase)
+
+==============================================================================
+SUMMARY
+==============================================================================
+  HTTP requests used        : 2002 / 2200
+  failed requests           : 408
+  elapsed                   : 1482 s
+  IT vacancies (unique)     : 12,656
+  control vacancies (unique): 9,731
+
+  [IT]
+    with salary_min         : 12,566 (99%)
+    distinct regions        : 89
+    top regions             : Город Москва 654, Город Санкт-Петербург 479, Свердловская область 338, Ростовская область 310, Краснодарский край 295, Самарская область 293
+    creation-date range     : 2016-07-14 .. 2026-09-17
+
+  [control]
+    with salary_min         : 9,638 (99%)
+    distinct regions        : 87
+    top regions             : Город Москва 888, Город Санкт-Петербург 853, Самарская область 837, Свердловская область 837, Краснодарский край 835, Ростовская область 834
+    creation-date range     : 2015-08-19 .. 2026-09-17
+
+  files:
+    regions.json                                  7,741 bytes
+    sample_3_records.json                        12,820 bytes
+    trudvsem_control_harvest.json            41,166,308 bytes
+    trudvsem_it_harvest.json                 64,675,476 bytes
+
+==============================================================================

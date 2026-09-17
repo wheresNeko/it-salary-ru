@@ -16,6 +16,12 @@ env/
 .coverage
 htmlcov/
 
+# ---- Raw harvests ----
+# The committed form is gzipped (.json.gz, ~13 MB for both sets).
+# The uncompressed form is 106 MB of pretty-printed JSON -- keep it local only.
+raw_samples/trudvsem_it_harvest.json
+raw_samples/trudvsem_control_harvest.json
+
 # ---- Editors / OS ----
 .vscode/
 .idea/

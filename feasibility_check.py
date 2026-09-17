@@ -370,7 +370,7 @@ def check_4_harvest() -> list[dict]:
     log(f"  failed requests    : {failures}")
     log(f"  unique vacancies   : {len(records)}")
 
-    out = RAW / "trudvsem_raw_harvest.json"
+    out = RAW / "verification_sample.json"
     out.write_text(
         json.dumps(list(records.values()), ensure_ascii=False, indent=2),
         encoding="utf-8",

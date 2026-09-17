@@ -102,20 +102,34 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 ## 项目现状
 
-**已完成**：数据源选择与实测验证、API 行为逆向、流水线设计。
+已完成：数据源验证与 API 行为逆向 → **Stage 1 全量采集** → 数据字典。
 
-`feasibility_check.py` 对线上 API 跑了 8 项检查，全部通过。完整输出见 [`verification_log.txt`](verification_log.txt)。
+### Stage 1 采集结果
+
+`collect.py` 用 8 并发 worker，2,002 次请求、24.7 分钟完成：
+
+| | IT 岗位 | 非 IT 对照组 |
+|---|---:|---:|
+| 独立岗位 | **12,656** | **9,731** |
+| 覆盖地区数 | 89 | 87 |
+| `salary_min` 有值 | 99% | 99% |
+| `creation-date` 跨度 | 2016-07 … 2026-09 | 2015-08 … 2026-09 |
+
+合计 **22,387 条**，压缩后 13.4 MB 入库。字段结构与缺陷统计见 [`docs/data_dictionary.md`](docs/data_dictionary.md) —— 全部由脚本从数据算出，没有一个数字是手写的。
+
+地区目录 `raw_samples/regions.json` 记录实测发现的 **78 个地区**（由探测 1–92 号编码得出，不是硬编码的清单）。
+
+### 数据源验证（早期阶段）
+
+`feasibility_check.py` 对线上 API 跑了 8 项检查，全部通过，输出见 [`verification_log.txt`](verification_log.txt)。
 
 | 检查项 | 结果 |
 |---|---|
 | 连通性与全国总量 | HTTP 200，**522,303** 岗位，无需认证 |
-| 实际抓取 | **317 条独立岗位**，56 次请求，**0 失败** |
-| 地区过滤验证 | `region_code` 59/77/66 分别返回彼尔姆边疆区/莫斯科市/斯维尔德洛夫斯克州 |
+| 地区过滤验证 | `region_code` 59/77/66 分别返回彼尔姆/莫斯科/斯维尔德洛夫斯克 |
 | `salary` 字段覆盖率 | **100%** |
-| `salary_min` / `salary_max` | 97% / 91% |
 | RegEx 薪资解析 vs `salary_min` | **100% 一致** |
-| RegEx 技能抽取 | 1С=134, python=52, sql=35, REST=30, Excel=29, Linux=26, git=19, C++=18 |
-| 从自由文本抽取经验要求 | 1年×10, 2年×3, 3年×7, 5年×4, 7年×7 |
+| RegEx 技能抽取 | 1С / python / sql / REST / Excel / Linux / C++ 等 22 类 |
 | `creation-date` 跨度 | **2020-08 … 2026-09** |
 
 ---
@@ -124,17 +138,21 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 这些都是实测发现，不是猜测。它们是阶段 4 的真实素材。
 
-### 1. `salary_min == salary_max`，占 34%
+### 1. `salary_min == salary_max`，占 36%
 
 门户对 `от 40000`（"40000 起"）这类开放式广告把**同一个值写进上下界**。所以 `salary_max` 看起来有值，实际不含任何信息量。任何把 `salary_max` 当作上界使用的模型都是错的。
 
+在 21,941 条有薪资的记录中实测到 **7,654 条（36%）** 上下界相等。
+
 → 处理方式：只对 `salary_min` 建模；量化该缺陷、选定并论证修复规则、报告该选择对结果的影响。
 
-### 2. `skills` 字段 81% 为空
+### 2. `skills` 字段 77% 为空
 
 本该是薪资预测最强因子的技术技能，**无法直接读取**，必须从俄语自由文本 `requirements` / `duty` 中挖掘。这是 RegEx 的核心工作，不是装饰。
 
-### 3. 西里尔字母陷阱：31% 的 C++ 岗位被朴素正则漏掉
+实测：22,387 条中 **16,978 条（77%）** 的 `skills` 为空。
+
+### 3. 西里尔字母陷阱：43% 的 C++ 岗位被朴素正则漏掉
 
 俄语广告经常用**西里尔字母 С**（U+0421）写 `С++`，因为它和拉丁 C 长得完全一样。Python 的 `re.IGNORECASE` **不会**跨字母表折叠：
 
@@ -143,13 +161,13 @@ re.search(r"c\+\+", "C++", re.I)   # -> match
 re.search(r"c\+\+", "С++", re.I)   # -> None   静默漏掉
 ```
 
-实测：26 个 C++ 岗位中，**8 个（31%）只用西里尔写法**，朴素正则完全匹配不到 —— 其中包括一个岗位标题写着「Ведущий программист **С++**(Qt)」。
+在全部 22,387 条上实测：139 条只用拉丁写法，**102 条只用西里尔写法**，另有 100 条两种混用 —— 朴素正则的漏检率是 **102/239 ≈ 43%**。（早期 317 条样本上测得 31%，样本变大后比例更高。）
 
 这类缺陷**不报错**，只会静默地把特征变成 0。只有看真实数据才能发现，读文档永远发现不了。这正是阶段 4 参数化单元测试存在的理由。
 
 ### 4. `salary` 自由文本格式高度单一
 
-样本中 100% 是 `"от N"` 形式，货币 100% 是 `«руб.»`。所以薪资串解析是**校验工具**而非特征来源 —— 这一点反直觉，但实测如此。
+21,941 条有薪资的记录中，**100% 是 `"от N"` 形式**，货币 **100% 是 `«руб.»`**。所以薪资串解析是**校验工具**而非特征来源 —— 这一点反直觉，但实测如此。
 
 ---
 
@@ -164,18 +182,30 @@ re.search(r"c\+\+", "С++", re.I)   # -> None   静默漏掉
 > ⚠️ 不校验返回 `region.name` 的客户端，会在「以为筛了地区」的情况下拿全国数据训练模型。
 > `feasibility_check.py` 对每次请求都断言返回的地区名。
 
-### 分页只有一种可靠组合
+### 分页已失效（行为在实测期间发生了变化）
 
-实测矩阵（OK = HTTP 200，X = HTTP 500）：
+早期实测中 `offset` 最深可用到 999。**现在 `offset > 0` 一律返回 HTTP 200 但零条记录**，同一会话内行为变了。只有 `offset=0` 可靠。
 
-| limit | off=0 | off=10 | off=100 | off=500 | off=900 | off=999 |
-|---|---|---|---|---|---|---|
-| 10 | OK | OK | OK | OK | OK | OK |
-| 20 | OK | OK | OK | X | X | X |
-| 50 | OK | OK | OK | X | X | X |
-| 100 | OK | OK | OK | X | X | X |
+| limit | offset=0 | offset>0 |
+|---|---|---|
+| 100 | OK，返回 100 条 | **返回 0 条** |
+| 10 | OK | **返回 0 条** |
 
-只有 `limit=10` + offset 步进在任意深度都可用。最大 offset 是 **999**，所以单个（关键词 × 地区）查询最多约 1000 条 —— 覆盖率靠**切片查询**扩展，不靠深分页。
+`limit` 超过 100 会被静默截断为 100。
+
+所以采集策略是：**每个（关键词 × 地区）单元格只发一次 `limit=100&offset=0`，覆盖率完全靠切片扩展**。单元格超过 100 条时只取前 100 条 —— 这是被接受并明确记录的损失。
+
+### 服务端延迟 5–6 秒，必须并发
+
+单次请求耗时 5–6 秒，且**连接池无帮助**（说明瓶颈是服务端处理，不是握手开销）。实测并发效果：
+
+| worker 数 | 吞吐 | 失败数 |
+|---|---|---|
+| 顺序 | 0.19 req/s | 0 |
+| 4 | 0.56 req/s | 0 |
+| 8 | **1.20 req/s** | 0 |
+
+`collect.py` 因此使用 8 个 worker —— 这是把采集从 8 小时压到半小时以内的唯一办法。
 
 ### 没有可用的日期过滤
 
@@ -189,21 +219,33 @@ re.search(r"c\+\+", "С++", re.I)   # -> None   静默漏掉
 
 ```
 it-salary-ru/
-├── README.md                    本文件（中文）
-├── README.en.md                 English version
-├── feasibility_check.py         数据源验证脚本（已跑通，8 项检查）
-├── verification_log.txt         验证脚本的完整输出（运行后生成）
-├── raw_samples/                 真实抓取的数据
-│   ├── sample_3_records.json        3 条完整记录（人类可读，用于展示字段结构）
-│   └── trudvsem_raw_harvest.json    317 条岗位（1.4 MB）
-└── api_investigation/           API 行为逆向过程的探测脚本
+├── README.md                     本文件（中文）
+├── README.en.md                  English version
+├── feasibility_check.py          数据源验证脚本（8 项检查）
+├── collect.py                    Stage 1 采集器（8 并发 worker）
+├── make_data_dictionary.py       从原始数据生成数据字典
+├── verification_log.txt          验证脚本输出
+├── collection_log.txt            采集运行日志
+├── docs/
+│   └── data_dictionary.md        数据字典（由脚本从数据算出，非手写）
+├── raw_samples/                  真实抓取的数据
+│   ├── regions.json                  78 个地区目录（实测得出，非硬编码）
+│   ├── sample_3_records.json         3 条完整记录（人类可读）
+│   ├── trudvsem_it_harvest.json      IT 岗位采集结果
+│   ├── trudvsem_control_harvest.json 非 IT 对照组
+│   └── verification_sample.json      验证脚本抓的样本
+└── api_investigation/            API 行为逆向的探测脚本
     ├── probe_structure.py           记录字段结构
-    ├── probe_params.py              参数名（找出 region_code）
-    ├── probe_paging.py              分页参数与 offset 上限
-    └── probe_limits.py              limit/offset 组合极限
+    ├── probe_params.py              参数名（如何发现 region_code）
+    ├── probe_paging.py              分页参数
+    ├── probe_limits.py              limit/offset 组合极限
+    ├── probe_paging_boundary.py     offset×limit 假设的证伪
+    ├── probe_latency.py             延迟归因（服务端 vs 握手）
+    ├── probe_throttle.py            深度 offset 失效与并发验证
+    └── probe_concurrency.py         并发扩展性（4 vs 8 worker）
 ```
 
-`api_investigation/` 不是草稿 —— 它是「我怎么知道 `regionCode` 不行」的可复现证据。
+`api_investigation/` 不是草稿 —— 它是「我怎么知道 `regionCode` 不行」「我怎么知道分页失效了」的可复现证据。
 
 ---
 
@@ -212,10 +254,13 @@ it-salary-ru/
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
 pip install requests
-python feasibility_check.py
+
+python collect.py                    # Stage 1 采集（约 25 分钟）
+python make_data_dictionary.py       # 从原始数据重新生成数据字典
+python feasibility_check.py          # 8 项数据源验证检查
 ```
 
-脚本会访问线上 API、抓取样本、重写 `verification_log.txt` 和 `raw_samples/`。
+`collect.py` 支持参数：`--budget N`（请求上限）、`--seconds N`（时间上限）、`--phase national|grid|both`（只跑全国扫描或地区网格）、`--refresh-regions`（重新探测地区目录）。中断后区域目录会保留，下次运行自动续跑。
 
 依赖：`requests`（必需）。DOM 解析阶段还需要 `pip install beautifulsoup4 lxml`。
 
@@ -228,8 +273,8 @@ python feasibility_check.py
 | 阶段 | 里程碑 | 产出 |
 |---|---|---|
 | ✅ 已完成 | 数据源验证与 API 逆向 | 验证脚本、验证日志、原始样本 |
-| 下一步 | 全量采集（全地区 × 全关键词 + 非 IT 对照组） | 原始数据集 + 数据字典 |
-| | 清洗、RegEx 抽取、质量门禁 | 分析表 + 数据质量报告 |
+| ✅ 已完成 | **Stage 1 全量采集** | 22,387 条原始数据、78 地区目录、数据字典 |
+| 下一步 | 清洗、RegEx 抽取、质量门禁 | 分析表 + 数据质量报告 |
 | | 探索性分析、特征工程 | EDA notebook、特征规范 |
 | | M0 基线与 M1 Ridge | 评估框架、首批真实指标 |
 | | M2 LightGBM 与 M3 MLP 对比 | 模型对比表、误差分析 |

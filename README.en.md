@@ -124,22 +124,40 @@ instead of assuming that "neural" means "better".
 
 ## Project status
 
-**Done:** source selection and live verification, API behaviour
-reverse-engineering, pipeline design.
+Done: source verification and API reverse-engineering → **Stage 1 full
+collection** → data dictionary.
 
-`feasibility_check.py` runs 8 checks against the live API; all pass. Full output
-is in [`verification_log.txt`](verification_log.txt).
+### Stage 1 collection results
+
+`collect.py` used 8 concurrent workers and finished 2,002 requests in 24.7
+minutes:
+
+| | IT vacancies | Non-IT control |
+|---|---:|---:|
+| Unique vacancies | **12,656** | **9,731** |
+| Distinct regions | 89 | 87 |
+| `salary_min` present | 99% | 99% |
+| `creation-date` range | 2016-07 … 2026-09 | 2015-08 … 2026-09 |
+
+**22,387 records** in total, 13.4 MB gzipped in the repository. Field structure
+and defect statistics are in [`docs/data_dictionary.md`](docs/data_dictionary.md)
+— every number there is computed from the data, none is hand-written.
+
+The region directory `raw_samples/regions.json` records the **78 regions** found
+by probing codes 1–92; it is measured, not a hard-coded list.
+
+### Source verification (earlier stage)
+
+`feasibility_check.py` runs 8 checks against the live API; all pass. Output is in
+[`verification_log.txt`](verification_log.txt).
 
 | Check | Result |
 |---|---|
 | Connectivity and national volume | HTTP 200, **522,303** vacancies, no authentication |
-| Actual harvest | **317 unique vacancies** from 56 requests, **0 failures** |
 | Region filter verified | `region_code` 59 / 77 / 66 returned exactly Пермский край / Город Москва / Свердловская область |
 | `salary` field coverage | **100%** |
-| `salary_min` / `salary_max` | 97% / 91% |
 | RegEx salary parse vs `salary_min` | **100% agreement** |
-| RegEx skill extraction | 1С=134, python=52, sql=35, REST=30, Excel=29, Linux=26, git=19, C++=18 |
-| Experience mined from free text | 1 yr ×10, 2 yr ×3, 3 yr ×7, 5 yr ×4, 7 yr ×7 |
+| RegEx skill extraction | 1С / python / sql / REST / Excel / Linux / C++ — 22 patterns |
 | `creation-date` range | **2020-08 … 2026-09** |
 
 ---
@@ -148,22 +166,27 @@ is in [`verification_log.txt`](verification_log.txt).
 
 All of these were measured, not assumed. They are the real material for Stage 4.
 
-### 1. `salary_min == salary_max` on 34% of records
+### 1. `salary_min == salary_max` on 36% of records
 
 For open-ended adverts such as `от 40000` ("from 40,000") the portal writes **the
 same value into both bounds**. So `salary_max` looks populated but carries no
 information. Any model that treats `salary_max` as an upper bound is wrong.
 
+Measured across 21,941 records carrying salary: **7,654 (36%) have identical
+bounds**.
+
 → Approach: model `salary_min` only; quantify the defect, choose and defend a
 repair rule, and report the effect of that choice on the results.
 
-### 2. The `skills` field is empty on 81% of records
+### 2. The `skills` field is empty on 77% of records
 
 The technology skills that should be the strongest salary predictors **cannot be
 read off** — they have to be mined from the Russian free-text `requirements` and
 `duty` fields. This is the core RegEx work, not decoration.
 
-### 3. The Cyrillic trap: a naive pattern misses 31% of C++ vacancies
+Measured: **16,978 of 22,387 records (77%)** have an empty `skills` field.
+
+### 3. The Cyrillic trap: a naive pattern misses 43% of C++ vacancies
 
 Russian adverts often write `С++` with a **Cyrillic** С (U+0421) because it looks
 identical to the Latin one. Python's `re.IGNORECASE` does **not** fold across
@@ -174,9 +197,10 @@ re.search(r"c\+\+", "C++", re.I)   # -> match
 re.search(r"c\+\+", "С++", re.I)   # -> None   silently missed
 ```
 
-Measured: of 26 C++ vacancies, **8 (31%) appear only in the Cyrillic spelling**
-and are missed entirely by the naive pattern — including one whose job title is
-*"Ведущий программист С++(Qt)"*.
+Measured across all 22,387 records: 139 match only the Latin spelling, **102 match
+only the Cyrillic spelling**, and 100 use both — a naive pattern's false-negative
+rate is **102/239 ≈ 43%**. (The earlier 317-record sample suggested 31%; the
+larger sample made the problem worse, not better.)
 
 Defects of this kind **raise no error**; they silently turn a feature into zero.
 They only surface by looking at real records, never by reading documentation.
@@ -184,9 +208,10 @@ This is precisely why Stage 4 needs parametrised unit tests.
 
 ### 4. The `salary` free text is highly uniform
 
-In the sample, 100% of values are of the form `"от N"` and 100% of currencies are
-`«руб.»`. So salary string parsing is a *validation* tool rather than a feature
-source — counter-intuitive, but that is what the measurement shows.
+Across the 21,941 records carrying salary, **100% of values are of the form
+`"от N"`** and **100% of currencies are `«руб.»`**. So salary string parsing is a
+*validation* tool rather than a feature source — counter-intuitive, but that is
+what the measurement shows.
 
 ---
 
@@ -205,20 +230,37 @@ country** with HTTP 200 and no warning. The correct name is `region_code`
 > on unfiltered national data.
 > `feasibility_check.py` asserts the returned region on every request.
 
-### Only one pagination recipe is reliable
+### Paging stopped working (the behaviour changed mid-investigation)
 
-Measured grid (OK = HTTP 200, X = HTTP 500):
+Earlier measurements reached `offset` 999. **`offset > 0` now returns HTTP 200
+with ZERO records** — the behaviour changed within the same session. Only
+`offset=0` is reliable.
 
-| limit | off=0 | off=10 | off=100 | off=500 | off=900 | off=999 |
-|---|---|---|---|---|---|---|
-| 10 | OK | OK | OK | OK | OK | OK |
-| 20 | OK | OK | OK | X | X | X |
-| 50 | OK | OK | OK | X | X | X |
-| 100 | OK | OK | OK | X | X | X |
+| limit | offset=0 | offset>0 |
+|---|---|---|
+| 100 | OK, returns 100 records | **returns 0 records** |
+| 10 | OK | **returns 0 records** |
 
-Only `limit=10` with an offset sweep works at every depth. The maximum offset is
-**999**, so a single (keyword × region) query yields at most ~1000 records —
-coverage comes from **slicing queries**, not from deep paging.
+A `limit` above 100 is silently clamped to 100.
+
+The collection strategy is therefore: **one `limit=100&offset=0` request per
+(keyword, region) cell, with coverage coming entirely from slicing.** A cell with
+more than 100 vacancies yields only its first 100 — an accepted and documented
+loss.
+
+### Server latency is 5–6 s per request, so concurrency is mandatory
+
+A single request takes 5–6 seconds, and **connection pooling does not help** —
+the bottleneck is server-side processing, not handshakes. Measured scaling:
+
+| workers | throughput | failures |
+|---|---|---|
+| sequential | 0.19 req/s | 0 |
+| 4 | 0.56 req/s | 0 |
+| 8 | **1.20 req/s** | 0 |
+
+`collect.py` therefore uses 8 workers — the only way to bring the harvest down
+from eight hours to under half an hour.
 
 ### There is no usable date filter
 
@@ -237,20 +279,32 @@ as a query filter.
 it-salary-ru/
 ├── README.md                    Chinese / Russian-facing notes
 ├── README.en.md                 This file
-├── feasibility_check.py         Source verification script (8 checks, passing)
-├── verification_log.txt         Full output of the script (generated on run)
+├── feasibility_check.py         Source verification script (8 checks)
+├── collect.py                   Stage 1 collector (8 concurrent workers)
+├── make_data_dictionary.py      Generates the data dictionary from raw data
+├── verification_log.txt         Verification script output
+├── collection_log.txt           Collection run log
+├── docs/
+│   └── data_dictionary.md       Data dictionary (computed, not hand-written)
 ├── raw_samples/                 Real downloaded data
-│   ├── sample_3_records.json        3 complete records (human-readable, shows the field structure)
-│   └── trudvsem_raw_harvest.json    317 vacancies (1.4 MB)
+│   ├── regions.json                 78 region directory (measured, not hard-coded)
+│   ├── sample_3_records.json        3 complete records (human-readable)
+│   ├── trudvsem_it_harvest.json     IT vacancy harvest
+│   ├── trudvsem_control_harvest.json Non-IT control set
+│   └── verification_sample.json     Sample from the verification script
 └── api_investigation/           Probe scripts from the API reverse-engineering
     ├── probe_structure.py           record field structure
     ├── probe_params.py              parameter names (how region_code was found)
-    ├── probe_paging.py              pagination parameter and offset ceiling
-    └── probe_limits.py              limit/offset combination limits
+    ├── probe_paging.py              pagination parameter
+    ├── probe_limits.py              limit/offset combination limits
+    ├── probe_paging_boundary.py     falsification of the offset*limit hypothesis
+    ├── probe_latency.py             latency attribution (server vs handshake)
+    ├── probe_throttle.py            deep-offset failure and concurrency
+    └── probe_concurrency.py         scaling (4 vs 8 workers)
 ```
 
 `api_investigation/` is not scratch work — it is the reproducible evidence behind
-claims such as "`regionCode` does not work".
+claims such as "`regionCode` does not work" and "paging stopped working".
 
 ---
 
@@ -259,11 +313,15 @@ claims such as "`regionCode` does not work".
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
 pip install requests
-python feasibility_check.py
+
+python collect.py                    # Stage 1 collection (~25 minutes)
+python make_data_dictionary.py       # regenerate the data dictionary
+python feasibility_check.py          # 8 source-verification checks
 ```
 
-The script contacts the live API, harvests a sample, and rewrites
-`verification_log.txt` and `raw_samples/`.
+`collect.py` accepts `--budget N` (request cap), `--seconds N` (time cap),
+`--phase national|grid|both`, and `--refresh-regions`. An interrupted run keeps
+its region directory and resumes from it.
 
 Dependencies: `requests` (required). The DOM-parsing stage will additionally need
 `pip install beautifulsoup4 lxml`.
@@ -277,8 +335,8 @@ Environment: Anaconda Python 3.14.6 at `C:\ProgramData\anaconda3\python.exe`.
 | Stage | Milestone | Deliverable |
 |---|---|---|
 | ✅ Done | Source verification and API reverse-engineering | Verification script, log, raw samples |
-| Next | Full collection (all regions × all keywords + non-IT control sample) | Raw dataset + data dictionary |
-| | Cleaning, RegEx extraction, quality gates | Analytical table + data-quality report |
+| ✅ Done | **Stage 1 full collection** | 22,387 raw records, 78-region directory, data dictionary |
+| Next | Cleaning, RegEx extraction, quality gates | Analytical table + data-quality report |
 | | Exploratory analysis, feature engineering | EDA notebook, feature specification |
 | | M0 baseline and M1 Ridge | Evaluation harness, first honest numbers |
 | | M2 LightGBM and M3 MLP comparison | Model comparison table, error analysis |

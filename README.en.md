@@ -125,7 +125,36 @@ instead of assuming that "neural" means "better".
 ## Project status
 
 Done: source verification and API reverse-engineering → **Stage 1 full
-collection** → data dictionary.
+collection** → **Stage 2 data processing**.
+
+### Stage 2 processing results
+
+`build_features.py` turns the raw records into one modelling table:
+
+| | Value |
+|---|---:|
+| Raw records | 22,387 |
+| Duplicates removed (same id / same employer+title+salary) | −446 / −2,363 |
+| **Analytical table rows** | **19,578** |
+| of which IT / control | 11,945 / 7,633 |
+| Analytical columns | 73 |
+| **Quality gates** | **10/10 passed** |
+
+Outputs: `data/processed/vacancies.parquet` (2.9 MB) and
+[`docs/data_quality_report.md`](docs/data_quality_report.md).
+
+**Stage 2 surfaced two traps that would have silently ruined the model:**
+
+1. **A zero sentinel.** The portal encodes "salary not specified" as the literal
+   value `0` — the text reads `"от 0"` — in 179 records. `log(0)` is `-inf`, and
+   a model will otherwise train happily on 0-rouble monthly salaries. These are
+   now set to missing and flagged.
+2. **`requirement.experience` is a code, not a year count.** Values `0`/`1`/`3`
+   account for 91%, with a tail out to `42`. Adverts carrying `code=0` ask for up
+   to 35 years of experience in their text; `code=10` appears on adverts reading
+   "от 10 лет" while `code=18` appears on ones reading "от 1 года" — there is no
+   consistent reading. **The column has been withdrawn from the feature set**;
+   see section 5 of the quality report.
 
 ### Stage 1 collection results
 
@@ -142,6 +171,11 @@ minutes:
 **22,387 records** in total, 13.4 MB gzipped in the repository. Field structure
 and defect statistics are in [`docs/data_dictionary.md`](docs/data_dictionary.md)
 — every number there is computed from the data, none is hand-written.
+
+The two sets **overlap by 446 vacancies** (matched by both IT and control
+keywords). Stage 2 collapses those into the IT set so the two groups are
+disjoint — otherwise the "IT premium" would partly be a group compared with
+itself.
 
 The region directory `raw_samples/regions.json` records the **78 regions** found
 by probing codes 1–92; it is measured, not a hard-coded list.
@@ -281,11 +315,15 @@ it-salary-ru/
 ├── README.en.md                 This file
 ├── feasibility_check.py         Source verification script (8 checks)
 ├── collect.py                   Stage 1 collector (8 concurrent workers)
+├── textmining.py                Pure text mining (skill / salary / experience regexes)
+├── build_features.py            Stage 2: clean, repair, dedupe, quality gates
 ├── make_data_dictionary.py      Generates the data dictionary from raw data
 ├── verification_log.txt         Verification script output
 ├── collection_log.txt           Collection run log
+├── data/processed/              Analytical table (*.parquet, not committed)
 ├── docs/
-│   └── data_dictionary.md       Data dictionary (computed, not hand-written)
+│   ├── data_dictionary.md       Data dictionary (computed, not hand-written)
+│   └── data_quality_report.md   Stage 2 gate results and repair impact
 ├── raw_samples/                 Real downloaded data
 │   ├── regions.json                 78 region directory (measured, not hard-coded)
 │   ├── sample_3_records.json        3 complete records (human-readable)
@@ -312,9 +350,10 @@ claims such as "`regionCode` does not work" and "paging stopped working".
 
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
-pip install requests
+pip install requests pandas pyarrow
 
 python collect.py                    # Stage 1 collection (~25 minutes)
+python build_features.py             # Stage 2 -> analytical table + report
 python make_data_dictionary.py       # regenerate the data dictionary
 python feasibility_check.py          # 8 source-verification checks
 ```
@@ -323,8 +362,8 @@ python feasibility_check.py          # 8 source-verification checks
 `--phase national|grid|both`, and `--refresh-regions`. An interrupted run keeps
 its region directory and resumes from it.
 
-Dependencies: `requests` (required). The DOM-parsing stage will additionally need
-`pip install beautifulsoup4 lxml`.
+Dependencies: `requests` (collection), `pandas` + `pyarrow` (processing). The
+DOM-parsing stage will additionally need `pip install beautifulsoup4 lxml`.
 
 Environment: Anaconda Python 3.14.6 at `C:\ProgramData\anaconda3\python.exe`.
 
@@ -336,7 +375,8 @@ Environment: Anaconda Python 3.14.6 at `C:\ProgramData\anaconda3\python.exe`.
 |---|---|---|
 | ✅ Done | Source verification and API reverse-engineering | Verification script, log, raw samples |
 | ✅ Done | **Stage 1 full collection** | 22,387 raw records, 78-region directory, data dictionary |
-| Next | Cleaning, RegEx extraction, quality gates | Analytical table + data-quality report |
+| ✅ Done | **Stage 2 cleaning, RegEx extraction, quality gates** | 19,578-row analytical table, 10/10 gates |
+| Next | Exploratory analysis, feature engineering | EDA notebook, feature specification |
 | | Exploratory analysis, feature engineering | EDA notebook, feature specification |
 | | M0 baseline and M1 Ridge | Evaluation harness, first honest numbers |
 | | M2 LightGBM and M3 MLP comparison | Model comparison table, error analysis |

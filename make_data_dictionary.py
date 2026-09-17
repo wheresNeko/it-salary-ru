@@ -141,28 +141,38 @@ def defects(records: list[dict], out: list[str]) -> None:
     if not n:
         return
 
+    def positive_int(v) -> bool:
+        return isinstance(v, int) and v > 0
+
     sal_str = [r for r in records if r.get("salary")]
-    sal_min = [r for r in records if r.get("salary_min")]
-    sal_max = [r for r in records if r.get("salary_max")]
-    both = [r for r in records if r.get("salary_min") and r.get("salary_max")]
+    zero_sentinel = [r for r in records if r.get("salary_min") == 0]
+    sal_min = [r for r in records if positive_int(r.get("salary_min"))]
+    sal_max = [r for r in records if positive_int(r.get("salary_max"))]
+    both = [r for r in records
+            if positive_int(r.get("salary_min")) and positive_int(r.get("salary_max"))]
     equal = [r for r in both if r["salary_min"] == r["salary_max"]]
     empty_skills = [r for r in records if not r.get("skills")]
 
     out.append("## Measured data defects")
     out.append("")
-    out.append("Computed from this dataset. These drive the Stage 2 repair policy and")
-    out.append("the Stage 4 cross-field proof.")
+    out.append(f"Computed over the de-duplicated union of both sets: **{n:,}** records.")
+    out.append("These drive the Stage 2 repair policy and the Stage 4 cross-field proof.")
     out.append("")
     out.append("| Defect | Count | Share |")
     out.append("|---|---:|---:|")
     out.append(f"| `salary` free text present | {len(sal_str):,} | "
-               f"{100*len(sal_str)/n:.0f}% |")
-    out.append(f"| `salary_min` present | {len(sal_min):,} | {100*len(sal_min)/n:.0f}% |")
-    out.append(f"| `salary_max` present | {len(sal_max):,} | {100*len(sal_max)/n:.0f}% |")
+               f"{100*len(sal_str)/n:.2f}% |")
+    out.append(f"| `salary_min` usable (a positive integer) | {len(sal_min):,} | "
+               f"{100*len(sal_min)/n:.2f}% |")
+    out.append(f"| `salary_max` usable (a positive integer) | {len(sal_max):,} | "
+               f"{100*len(sal_max)/n:.2f}% |")
+    out.append(f"| **zero sentinel — `salary_min == 0`, text `\"от 0\"`** "
+               f"(means \"not specified\", but looks like data) | "
+               f"{len(zero_sentinel):,} | {100*len(zero_sentinel)/n:.2f}% |")
     out.append(f"| **`salary_max == salary_min`** (upper bound carries no information) | "
-               f"{len(equal):,} | {100*len(equal)/max(len(both),1):.0f}% of those with both |")
+               f"{len(equal):,} | {100*len(equal)/max(len(both),1):.1f}% of those with both |")
     out.append(f"| **`skills` field empty** (skills must be mined from free text) | "
-               f"{len(empty_skills):,} | {100*len(empty_skills)/n:.0f}% |")
+               f"{len(empty_skills):,} | {100*len(empty_skills)/n:.1f}% |")
     out.append("")
 
     # salary string shapes -- digits collapsed to N

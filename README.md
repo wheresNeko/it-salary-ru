@@ -102,7 +102,27 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 ## 项目现状
 
-已完成：数据源验证与 API 行为逆向 → **Stage 1 全量采集** → 数据字典。
+已完成：数据源验证与 API 行为逆向 → **Stage 1 全量采集** → **Stage 2 数据加工**。
+
+### Stage 2 加工结果
+
+`build_features.py` 把原始记录变成一张可建模的分析表：
+
+| | 数值 |
+|---|---:|
+| 原始记录 | 22,387 |
+| 去掉重复（同一 id / 同雇主+同岗位+同薪资） | −446 / −2,363 |
+| **分析表行数** | **19,578** |
+| 其中 IT / 对照组 | 11,945 / 7,633 |
+| 分析表列数 | 73 |
+| **质量门禁** | **10/10 通过** |
+
+产出 `data/processed/vacancies.parquet`（2.9 MB）与 [`docs/data_quality_report.md`](docs/data_quality_report.md)。
+
+**Stage 2 挖出两个会静默毁掉模型的陷阱：**
+
+1. **零值哨兵**。门户用字面值 `0` 表示"薪资未指定"（原文 `"от 0"`），179 条记录如此。`log(0) = -inf`，模型会认真地从"0 卢布月薪"里学习。已置为缺失并保留标记。
+2. **`requirement.experience` 不是年数，是编码**。取值 `0`/`1`/`3` 占 91%，还有 `18`、`20`、`31`、`42`。`code=0` 的岗位文本里写着"最高 35 年经验"，`code=10` 的写着"от 10 лет"而 `code=18` 的写着"от 1 года" —— 无一致解读。**该字段已从特征集中撤除**，详情见质量报告第 5 节。
 
 ### Stage 1 采集结果
 
@@ -116,6 +136,8 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 | `creation-date` 跨度 | 2016-07 … 2026-09 | 2015-08 … 2026-09 |
 
 合计 **22,387 条**，压缩后 13.4 MB 入库。字段结构与缺陷统计见 [`docs/data_dictionary.md`](docs/data_dictionary.md) —— 全部由脚本从数据算出，没有一个数字是手写的。
+
+两组数据有 **446 条重叠**（同时命中 IT 和对照组关键词），已在 Stage 2 折叠为 IT 组，保证两组互斥 —— 否则"IT 溢价"会变成部分自己和自己比。
 
 地区目录 `raw_samples/regions.json` 记录实测发现的 **78 个地区**（由探测 1–92 号编码得出，不是硬编码的清单）。
 
@@ -223,11 +245,15 @@ it-salary-ru/
 ├── README.en.md                  English version
 ├── feasibility_check.py          数据源验证脚本（8 项检查）
 ├── collect.py                    Stage 1 采集器（8 并发 worker）
+├── textmining.py                 纯函数文本挖掘（技能 / 薪资 / 经验正则）
+├── build_features.py             Stage 2 加工：清洗、修复、去重、质量门禁
 ├── make_data_dictionary.py       从原始数据生成数据字典
 ├── verification_log.txt          验证脚本输出
 ├── collection_log.txt            采集运行日志
+├── data/processed/               分析表（*.parquet 不入库，可重新生成）
 ├── docs/
-│   └── data_dictionary.md        数据字典（由脚本从数据算出，非手写）
+│   ├── data_dictionary.md        数据字典（由脚本从数据算出，非手写）
+│   └── data_quality_report.md    Stage 2 质量门禁与修复影响
 ├── raw_samples/                  真实抓取的数据
 │   ├── regions.json                  78 个地区目录（实测得出，非硬编码）
 │   ├── sample_3_records.json         3 条完整记录（人类可读）
@@ -253,16 +279,17 @@ it-salary-ru/
 
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
-pip install requests
+pip install requests pandas pyarrow
 
 python collect.py                    # Stage 1 采集（约 25 分钟）
+python build_features.py             # Stage 2 加工 → 分析表 + 质量报告
 python make_data_dictionary.py       # 从原始数据重新生成数据字典
 python feasibility_check.py          # 8 项数据源验证检查
 ```
 
 `collect.py` 支持参数：`--budget N`（请求上限）、`--seconds N`（时间上限）、`--phase national|grid|both`（只跑全国扫描或地区网格）、`--refresh-regions`（重新探测地区目录）。中断后区域目录会保留，下次运行自动续跑。
 
-依赖：`requests`（必需）。DOM 解析阶段还需要 `pip install beautifulsoup4 lxml`。
+依赖：`requests`（采集）、`pandas` + `pyarrow`（加工）。DOM 解析阶段还需要 `pip install beautifulsoup4 lxml`。
 
 环境：Anaconda Python 3.14.6，位置 `C:\ProgramData\anaconda3\python.exe`。
 
@@ -274,7 +301,8 @@ python feasibility_check.py          # 8 项数据源验证检查
 |---|---|---|
 | ✅ 已完成 | 数据源验证与 API 逆向 | 验证脚本、验证日志、原始样本 |
 | ✅ 已完成 | **Stage 1 全量采集** | 22,387 条原始数据、78 地区目录、数据字典 |
-| 下一步 | 清洗、RegEx 抽取、质量门禁 | 分析表 + 数据质量报告 |
+| ✅ 已完成 | **Stage 2 清洗、RegEx 抽取、质量门禁** | 19,578 行分析表、10/10 门禁报告 |
+| 下一步 | 探索性分析、特征工程 | EDA notebook、特征规范 |
 | | 探索性分析、特征工程 | EDA notebook、特征规范 |
 | | M0 基线与 M1 Ridge | 评估框架、首批真实指标 |
 | | M2 LightGBM 与 M3 MLP 对比 | 模型对比表、误差分析 |

@@ -455,6 +455,11 @@ def main() -> None:
 
     print("Stage 3 -- predictive analytics")
     print(f"  rows: {len(df):,}")
+    print(f"  BLAS threads pinned: OPENBLAS="
+          f"{os.environ.get('OPENBLAS_NUM_THREADS')} "
+          f"MKL={os.environ.get('MKL_NUM_THREADS')} "
+          f"(unpinned -> TruncatedSVD hangs; see README troubleshooting)")
+    print(f"  torch: {'available' if TORCH_OK else 'MISSING (sklearn fallback)'}")
 
     data = df[df[TARGET].notna()].copy()
     train, test, cutoff = temporal_split(data, df)

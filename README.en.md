@@ -335,6 +335,56 @@ as a query filter.
 
 ---
 
+## Troubleshooting (read before re-running)
+
+### `TruncatedSVD` hangs with the default thread count
+
+The SVD in `train_models.py` **never returns at 48 or more components** with
+default settings — CPU pinned, no output, no error, no exit. The matrix is only
+14,513 × 3,000 with 1.3 M non-zeros, so this is **BLAS thread oversubscription**,
+not a large computation.
+
+The fix is to pin the BLAS thread count **before `import numpy`**, which
+`train_models.py` now does at the top of the file:
+
+| Setting | SVD(128) |
+|---|---|
+| default (all cores) | **hangs** |
+| `OPENBLAS_NUM_THREADS=1` + `MKL_NUM_THREADS=1` | **0.6 s** |
+
+One thread is *faster*. Only the BLAS variables are pinned, so
+`HistGradientBoosting` keeps every core (400 iterations in 2.5 s).
+
+**If you write anything involving `TruncatedSVD`, `PCA` or large matrix
+factorisations, these two lines must come before numpy:**
+
+```python
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+import numpy as np   # only after the pin
+```
+
+### A hung script leaves an orphan process eating the CPU
+
+A terminal or tool timeout **kills only the outer wrapper; the Python child
+survives** and keeps spinning at full load. Three such orphans accumulated
+during this project, burning roughly **7.9 hours of core time** — and every
+background job still reported "completed", so nothing warned.
+
+When a script goes quiet and the fans spin up, check for processes first:
+
+```powershell
+Get-Process python                        # is anything left over?
+Get-Process python | Stop-Process -Force  # clean up
+```
+
+Diagnostic order: **check for orphans before suspecting slow code.** The
+20-minute silence early in this project was first blamed on the algorithm when
+it was a zombie process stealing CPU.
+
+---
+
 ## Repository layout
 
 ```

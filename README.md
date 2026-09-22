@@ -256,6 +256,45 @@ re.search(r"c\+\+", "С++", re.I)   # -> None   静默漏掉
 
 ---
 
+## 排查陷阱（重跑前必读）
+
+### `TruncatedSVD` 会在默认线程设置下挂死
+
+`train_models.py` 里的 SVD 在 **48 个以上分量时永不返回** —— CPU 满负载、无输出、无报错、不退出。矩阵只有 14513×3000、128 万非零元，这点规模不该有问题：这是 **BLAS 线程超额订阅**，不是计算量大。
+
+修复方式是**在 `import numpy` 之前**固定 BLAS 线程数，`train_models.py` 开头已经这样做了：
+
+| 线程设置 | SVD(128) |
+|---|---|
+| 默认（全部核心） | **挂死** |
+| `OPENBLAS_NUM_THREADS=1` + `MKL_NUM_THREADS=1` | **0.6 秒** |
+
+单线程反而更快。只固定 BLAS 变量、不动 `OMP_NUM_THREADS`，所以 `HistGradientBoosting` 仍能用满所有核心（400 轮 2.5 秒）。
+
+**如果你要自己写涉及 `TruncatedSVD` / `PCA` / 大型矩阵分解的代码，必须在导入 numpy 前加这两行：**
+
+```python
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+import numpy as np   # 必须在这之后
+```
+
+### 挂死的脚本会留下占满 CPU 的孤儿进程
+
+终端或工具超时**只杀掉外层包装进程，Python 子进程会活下来**并继续满负载空转。本项目开发期间因此积累了 3 个孤儿进程，合计烧掉约 **7.9 小时核心时间**，而且当时所有后台任务都显示"已完成"，完全没有告警。
+
+判断方法：某个脚本长时间无输出且风扇狂转时，先查进程。
+
+```powershell
+Get-Process python                        # 看有没有残留
+Get-Process python | Stop-Process -Force  # 清理
+```
+
+诊断顺序：**先看有没有孤儿进程，再怀疑代码慢。** 本项目最初把 20 分钟无输出误判为算法问题，实际是一个僵尸进程在抢 CPU。
+
+---
+
 ## 目录结构
 
 ```

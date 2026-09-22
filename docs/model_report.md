@@ -260,7 +260,7 @@ split and early stopping:
 - device: **NVIDIA GeForce RTX 3080**
 - parameters: 45,953
 - epochs run: 29 (best at 9)
-- training time: 2.7 s
+- training time: 1.8 s
 
 The GPU is genuinely idle work for a network this small — the matrix is
 4,886 x ~200 and the wall-clock is dominated by the CPU-side TF-IDF and

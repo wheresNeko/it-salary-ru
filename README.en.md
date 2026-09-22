@@ -125,7 +125,35 @@ instead of assuming that "neural" means "better".
 ## Project status
 
 Done: source verification and API reverse-engineering → **Stage 1 full
-collection** → **Stage 2 data processing**.
+collection** → **Stage 2 data processing** → **Stage 3 predictive analytics**.
+
+### Stage 3 modelling results
+
+`train_models.py` compares six models on a **temporal hold-out** (train on the
+14,513 postings before 2026-08-20, test on the 4,886 after it):
+
+| Model | MAE (RUR) | As % of median | R² (log) |
+|---|---:|---:|---:|
+| M0a global train median | 28,594 | 57.2% | −0.177 |
+| M0b (region × education) cell median | 23,674 | 47.3% | 0.187 |
+| M1 Ridge (sparse one-hot + full TF-IDF) | 17,963 | 35.9% | 0.592 |
+| M1b Ridge (dense design) | 18,262 | 36.5% | 0.588 |
+| **M2 gradient boosting** | **17,554** | **35.1%** | **0.613** |
+| M3 neural network (PyTorch / RTX 3080) | 17,946 | 35.9% | 0.596 |
+
+**The neural network does not beat gradient boosting** (R² 0.596 vs 0.613, MAE
+2.2% worse). M2 and M3 receive **byte-identical input matrices**, so this is a
+comparison of model classes, not of feature sets — it is the answer to research
+sub-question 3 and one of the project's main findings.
+
+The best model improves on the strongest baseline (M0b) by **25.9%**. Outputs:
+[`docs/model_report.md`](docs/model_report.md) plus two figures.
+
+**The controlled IT premium is +1.0%.** With `is_it` inside a Ridge regression
+alongside region, education, occupation and skill features, the coefficient
+implies a 1% salary difference — a sharp contrast with the raw Stage 2 gap
+(IT median 5,000 RUR above control). That raw gap is almost entirely explained
+by regional and occupational composition.
 
 ### Stage 2 processing results
 
@@ -317,13 +345,16 @@ it-salary-ru/
 ├── collect.py                   Stage 1 collector (8 concurrent workers)
 ├── textmining.py                Pure text mining (skill / salary / experience regexes)
 ├── build_features.py            Stage 2: clean, repair, dedupe, quality gates
+├── train_models.py              Stage 3: M0-M3 comparison, error analysis, leakage audit
 ├── make_data_dictionary.py      Generates the data dictionary from raw data
 ├── verification_log.txt         Verification script output
 ├── collection_log.txt           Collection run log
 ├── data/processed/              Analytical table (*.parquet, not committed)
 ├── docs/
 │   ├── data_dictionary.md       Data dictionary (computed, not hand-written)
-│   └── data_quality_report.md   Stage 2 gate results and repair impact
+│   ├── data_quality_report.md   Stage 2 gate results and repair impact
+│   ├── model_report.md          Stage 3 comparison, leakage audit, error analysis
+│   └── fig_*.png                Stage 3 figures
 ├── raw_samples/                 Real downloaded data
 │   ├── regions.json                 78 region directory (measured, not hard-coded)
 │   ├── sample_3_records.json        3 complete records (human-readable)
@@ -354,6 +385,7 @@ pip install requests pandas pyarrow
 
 python collect.py                    # Stage 1 collection (~25 minutes)
 python build_features.py             # Stage 2 -> analytical table + report
+python train_models.py               # Stage 3 -> model report (~40 seconds)
 python make_data_dictionary.py       # regenerate the data dictionary
 python feasibility_check.py          # 8 source-verification checks
 ```
@@ -376,11 +408,8 @@ Environment: Anaconda Python 3.14.6 at `C:\ProgramData\anaconda3\python.exe`.
 | ✅ Done | Source verification and API reverse-engineering | Verification script, log, raw samples |
 | ✅ Done | **Stage 1 full collection** | 22,387 raw records, 78-region directory, data dictionary |
 | ✅ Done | **Stage 2 cleaning, RegEx extraction, quality gates** | 19,578-row analytical table, 10/10 gates |
-| Next | Exploratory analysis, feature engineering | EDA notebook, feature specification |
-| | Exploratory analysis, feature engineering | EDA notebook, feature specification |
-| | M0 baseline and M1 Ridge | Evaluation harness, first honest numbers |
-| | M2 LightGBM and M3 MLP comparison | Model comparison table, error analysis |
-| | Unit tests, integration test, leakage audit | Test suite, validation report |
+| ✅ Done | **Stage 3 predictive analytics (M0–M3)** | Model report, error analysis, two figures |
+| Next | **Stage 4** unit tests, integration test, leakage audit | Test suite, validation report |
 | | Write-up and presentation | Final report, reproducible repository |
 
 ---

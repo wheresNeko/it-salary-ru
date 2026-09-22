@@ -175,6 +175,9 @@ def flatten(rec: dict, is_it: bool) -> dict:
         "skills_structured_n": len(skills_structured),
         "skills_mined": sorted(skills_mined),
         "skills_mined_n": len(skills_mined),
+        # Full concatenated free text, kept so Stage 3 can run TF-IDF over it
+        # rather than only over the dictionary hits.
+        "text_blob": blob,
         # --- kept so the repair can be re-evaluated later ---
         "_salary_open_ended": open_ended,
         "_salary_max_repaired": sal_max_repaired,

@@ -102,7 +102,26 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 ## 项目现状
 
-已完成：数据源验证与 API 行为逆向 → **Stage 1 全量采集** → **Stage 2 数据加工**。
+已完成：数据源验证与 API 行为逆向 → **Stage 1 全量采集** → **Stage 2 数据加工** → **Stage 3 预测分析**。
+
+### Stage 3 建模结果
+
+`train_models.py` 在**时序留出**上对比六组模型（训练用 2026-08-20 之前的 14,513 条，测试用之后的 4,886 条）：
+
+| 模型 | MAE (RUB) | 占中位薪资 | R² (log) |
+|---|---:|---:|---:|
+| M0a 全局训练中位数 | 28,594 | 57.2% | −0.177 |
+| M0b 地区×学历格中位数 | 23,674 | 47.3% | 0.187 |
+| M1 Ridge（稀疏 one-hot + 完整 TF-IDF） | 17,963 | 35.9% | 0.592 |
+| M1b Ridge（稠密设计） | 18,262 | 36.5% | 0.588 |
+| **M2 梯度提升** | **17,554** | **35.1%** | **0.613** |
+| M3 神经网络（PyTorch / RTX 3080） | 17,946 | 35.9% | 0.596 |
+
+**结论：神经网络没有跑赢梯度提升**（R² 0.596 vs 0.613，MAE 高 2.2%）。M2 与 M3 输入矩阵**逐字节相同**，所以这是纯粹的模型类别对比，不是特征对比 —— 这正是研究子问题 3 的答案，也是本项目的核心发现之一。
+
+比最强基线（M0b）改善 **25.9%**。产出 [`docs/model_report.md`](docs/model_report.md) 与两张图。
+
+**控制变量后的 IT 溢价：+1.0%**。`is_it` 放进 Ridge 与其他特征一起回归，系数换算成年化薪资差异只有 1% —— 和 Stage 2 里"IT 中位数比对照组高 5,000 卢布"的**原始差距**对比鲜明：那个差距几乎完全由地区、学历、职业结构解释掉了。
 
 ### Stage 2 加工结果
 
@@ -247,13 +266,16 @@ it-salary-ru/
 ├── collect.py                    Stage 1 采集器（8 并发 worker）
 ├── textmining.py                 纯函数文本挖掘（技能 / 薪资 / 经验正则）
 ├── build_features.py             Stage 2 加工：清洗、修复、去重、质量门禁
+├── train_models.py               Stage 3 建模：M0→M3 对比、误差分析、泄漏审查
 ├── make_data_dictionary.py       从原始数据生成数据字典
 ├── verification_log.txt          验证脚本输出
 ├── collection_log.txt            采集运行日志
 ├── data/processed/               分析表（*.parquet 不入库，可重新生成）
 ├── docs/
 │   ├── data_dictionary.md        数据字典（由脚本从数据算出，非手写）
-│   └── data_quality_report.md    Stage 2 质量门禁与修复影响
+│   ├── data_quality_report.md    Stage 2 质量门禁与修复影响
+│   ├── model_report.md           Stage 3 模型对比、泄漏审查、误差分析
+│   └── fig_*.png                 Stage 3 图表
 ├── raw_samples/                  真实抓取的数据
 │   ├── regions.json                  78 个地区目录（实测得出，非硬编码）
 │   ├── sample_3_records.json         3 条完整记录（人类可读）
@@ -283,6 +305,7 @@ pip install requests pandas pyarrow
 
 python collect.py                    # Stage 1 采集（约 25 分钟）
 python build_features.py             # Stage 2 加工 → 分析表 + 质量报告
+python train_models.py               # Stage 3 建模 → 模型报告（约 40 秒）
 python make_data_dictionary.py       # 从原始数据重新生成数据字典
 python feasibility_check.py          # 8 项数据源验证检查
 ```
@@ -302,11 +325,8 @@ python feasibility_check.py          # 8 项数据源验证检查
 | ✅ 已完成 | 数据源验证与 API 逆向 | 验证脚本、验证日志、原始样本 |
 | ✅ 已完成 | **Stage 1 全量采集** | 22,387 条原始数据、78 地区目录、数据字典 |
 | ✅ 已完成 | **Stage 2 清洗、RegEx 抽取、质量门禁** | 19,578 行分析表、10/10 门禁报告 |
-| 下一步 | 探索性分析、特征工程 | EDA notebook、特征规范 |
-| | 探索性分析、特征工程 | EDA notebook、特征规范 |
-| | M0 基线与 M1 Ridge | 评估框架、首批真实指标 |
-| | M2 LightGBM 与 M3 MLP 对比 | 模型对比表、误差分析 |
-| | 单元测试、集成测试、泄漏审查 | 测试套件、验证报告 |
+| ✅ 已完成 | **Stage 3 预测分析（M0→M3 对比）** | 模型报告、误差分析、两张图 |
+| 下一步 | **Stage 4** 单元测试、集成测试、泄漏审查 | 测试套件、验证报告 |
 | | 成文与展示 | 最终报告、可复现仓库 |
 
 ---

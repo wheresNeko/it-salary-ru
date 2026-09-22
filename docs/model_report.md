@@ -129,6 +129,34 @@ tabular data of this size, and it costs interpretability. The simpler
 model is the defensible choice, and saying so is the result — not a
 concession.
 
+#### A single seed is not evidence, so seven were run
+
+Neural networks vary with initialisation. If the spread across seeds were
+wider than the gap to M2, the headline above would be an artefact of one
+lucky start. The MLP was therefore retrained under seven seeds on the
+identical matrix:
+
+| MLP seed | R² (log) | MAE (RUR) |
+|---|---:|---:|
+| 0 | 0.5658 | 18,480 |
+| 1 | 0.5981 | 17,869 |
+| 7 | 0.5962 | 17,936 |
+| 42 | 0.5956 | 17,946 |
+| 123 | 0.6025 | 17,762 |
+| 2024 | 0.6012 | 17,759 |
+| 99999 | 0.6054 | 17,787 |
+| **M2 gradient boosting** | **0.6131** | **17,554** |
+
+Across seeds the MLP scores R² = 0.5950 ± 0.0134
+(min 0.5658, max 0.6054) and MAE 17,934 ± 253.
+
+**M2 beats every one of the 7 seeds on both metrics.**
+Its margin over the *best* seed is 205 RUR,
+which is comparable to the seed-to-seed spread itself — so the
+conclusion is sound, but the honest framing is that gradient boosting
+wins by about the width of the neural network's own noise, not by a
+margin that would survive any conceivable tuning.
+
 ## 4. The IT premium, with controls
 
 Stage 2 reported a raw gap between IT and non-IT medians. Here the `is_it`

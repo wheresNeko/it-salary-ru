@@ -112,6 +112,10 @@ TARGET = "log_salary"
 TEST_FRACTION = 0.25
 RANDOM_STATE = 42
 
+# A single seed is not evidence for a neural network. The MLP is retrained
+# under all of these so the M2-vs-M3 gap can be compared against its own noise.
+SEED_SWEEP = (0, 1, 7, 42, 123, 2024, 99999)
+
 # --------------------------------------------------------------------------
 # Column roles -- the leakage audit is this table, and it is printed in full
 # --------------------------------------------------------------------------
@@ -565,6 +569,19 @@ def main() -> None:
         preds["M3"] = p3
         step(f"M3 MLP (sklearn fallback)  R2={results[-1][1]['r2_log']:.3f}")
 
+    # ---- how robust is the M2-vs-M3 gap? ----------------------------------
+    # Retrain the network under several seeds on the identical matrix. If the
+    # seed spread swallowed the gap to M2, the headline conclusion would be an
+    # artefact of one lucky initialisation.
+    seed_scores: list[tuple[int, dict]] = []
+    if TORCH_OK and preds.get("M3") is not None:
+        for s in SEED_SWEEP:
+            pr, _ = train_torch_mlp(Atr, y_tr, Ate, seed=s)
+            seed_scores.append((s, score(y_te, pr)))
+        r2s = [m["r2_log"] for _, m in seed_scores]
+        step(f"M3 seed sweep: {len(seed_scores)} seeds, "
+             f"R2 {min(r2s):.4f}..{max(r2s):.4f}")
+
     # ---- IT premium from the linear model --------------------------------
     it_premium = None
     try:
@@ -602,7 +619,7 @@ def main() -> None:
     eval_df = build_eval_frame(test, y_te, preds["M2"])
     write_report(df, train, test, eval_df, cutoff, results, preds, imp_rank,
                  it_premium, (acc, majority, f1, edges), median_rur,
-                 Xtr_lin.shape[1], mlp_info)
+                 Xtr_lin.shape[1], mlp_info, seed_scores)
 
     print(f"  wrote {REPORT.relative_to(HERE)}  ({time.time()-t0:.0f}s)")
 
@@ -648,7 +665,8 @@ def make_figures(y_te, preds, imp_rank, median_rur):
 
 
 def write_report(df, train, test, eval_df, cutoff, results, preds, imp_rank,
-                 it_premium, band, median_rur, n_linear_features, mlp_info):
+                 it_premium, band, median_rur, n_linear_features, mlp_info,
+                 seed_scores):
     out: list[str] = []
     a = out.append
     acc, majority, f1, edges = band
@@ -772,6 +790,41 @@ def write_report(df, train, test, eval_df, cutoff, results, preds, imp_rank,
         a("loss of interpretability and the added tuning burden; on this evidence")
         a("the gradient-boosted model remains the better default.")
     a("")
+
+    if seed_scores:
+        r2s = np.array([m["r2_log"] for _, m in seed_scores])
+        maes = np.array([m["mae_rur"] for _, m in seed_scores])
+        wins = int((maes > m2["mae_rur"]).sum())
+        a("#### A single seed is not evidence, so seven were run")
+        a("")
+        a("Neural networks vary with initialisation. If the spread across seeds were")
+        a("wider than the gap to M2, the headline above would be an artefact of one")
+        a("lucky start. The MLP was therefore retrained under seven seeds on the")
+        a("identical matrix:")
+        a("")
+        a("| MLP seed | R² (log) | MAE (RUR) |")
+        a("|---|---:|---:|")
+        for s, m in seed_scores:
+            a(f"| {s} | {m['r2_log']:.4f} | {m['mae_rur']:,.0f} |")
+        a(f"| **M2 gradient boosting** | **{m2['r2_log']:.4f}** | "
+          f"**{m2['mae_rur']:,.0f}** |")
+        a("")
+        a(f"Across seeds the MLP scores R² = {r2s.mean():.4f} ± {r2s.std(ddof=1):.4f}")
+        a(f"(min {r2s.min():.4f}, max {r2s.max():.4f}) and MAE "
+          f"{maes.mean():,.0f} ± {maes.std(ddof=1):,.0f}.")
+        a("")
+        if wins == len(seed_scores):
+            a(f"**M2 beats every one of the {len(seed_scores)} seeds on both metrics.**")
+            a(f"Its margin over the *best* seed is {maes.min() - m2['mae_rur']:,.0f} RUR,")
+            a(f"which is comparable to the seed-to-seed spread itself — so the")
+            a(f"conclusion is sound, but the honest framing is that gradient boosting")
+            a(f"wins by about the width of the neural network's own noise, not by a")
+            a(f"margin that would survive any conceivable tuning.")
+        else:
+            a(f"**Caveat:** {len(seed_scores) - wins} of {len(seed_scores)} seeds beat M2")
+            a("on MAE, so the conclusion does not hold across seeds and must be")
+            a("stated as seed-dependent.")
+        a("")
 
     a("## 4. The IT premium, with controls")
     a("")

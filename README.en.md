@@ -146,6 +146,11 @@ collection** → **Stage 2 data processing** → **Stage 3 predictive analytics*
 comparison of model classes, not of feature sets — it is the answer to research
 sub-question 3 and one of the project's main findings.
 
+A single seed is not evidence, so the MLP was retrained under **seven seeds**:
+R² = 0.5950 ± 0.0134 (range 0.566–0.605), and **M2 wins on all seven, on both
+metrics**. The honest framing is that gradient boosting wins by roughly the width
+of the network's own seed noise.
+
 The best model improves on the strongest baseline (M0b) by **25.9%**. Outputs:
 [`docs/model_report.md`](docs/model_report.md) plus two figures.
 
@@ -435,7 +440,7 @@ pip install requests pandas pyarrow
 
 python collect.py                    # Stage 1 collection (~25 minutes)
 python build_features.py             # Stage 2 -> analytical table + report
-python train_models.py               # Stage 3 -> model report (~40 seconds)
+python train_models.py               # Stage 3 -> model report (~45 seconds)
 python make_data_dictionary.py       # regenerate the data dictionary
 python feasibility_check.py          # 8 source-verification checks
 ```

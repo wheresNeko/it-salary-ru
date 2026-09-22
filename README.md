@@ -119,6 +119,8 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 **结论：神经网络没有跑赢梯度提升**（R² 0.596 vs 0.613，MAE 高 2.2%）。M2 与 M3 输入矩阵**逐字节相同**，所以这是纯粹的模型类别对比，不是特征对比 —— 这正是研究子问题 3 的答案，也是本项目的核心发现之一。
 
+单个随机种子不算证据，所以 M3 又用 **7 个种子**重训了一遍：R² = 0.5950 ± 0.0134（0.566–0.605），**M2 在全部 7 个种子上、两个指标上都胜出**。诚实的表述是：梯度提升赢的幅度大致等于神经网络自身的种子噪声宽度。
+
 比最强基线（M0b）改善 **25.9%**。产出 [`docs/model_report.md`](docs/model_report.md) 与两张图。
 
 **控制变量后的 IT 溢价：+1.0%**。`is_it` 放进 Ridge 与其他特征一起回归，系数换算成年化薪资差异只有 1% —— 和 Stage 2 里"IT 中位数比对照组高 5,000 卢布"的**原始差距**对比鲜明：那个差距几乎完全由地区、学历、职业结构解释掉了。
@@ -344,7 +346,7 @@ pip install requests pandas pyarrow
 
 python collect.py                    # Stage 1 采集（约 25 分钟）
 python build_features.py             # Stage 2 加工 → 分析表 + 质量报告
-python train_models.py               # Stage 3 建模 → 模型报告（约 40 秒）
+python train_models.py               # Stage 3 建模 → 模型报告（约 45 秒）
 python make_data_dictionary.py       # 从原始数据重新生成数据字典
 python feasibility_check.py          # 8 项数据源验证检查
 ```

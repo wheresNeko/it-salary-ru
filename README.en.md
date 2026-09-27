@@ -8,7 +8,7 @@ quantify which factors actually drive it.
 
 > **Русская / 中文版: [README.md](README.md)**
 >
-> **📄 Final report (English and Chinese): [`docs/final_report.md`](docs/final_report.md) · [`docs/final_report.zh.md`](docs/final_report.zh.md)** — the four pipeline stages synthesised into one submittable document. This README is the project description and operating manual.
+> **📄 Final report (English and Chinese): [`docs/final_report.md`](docs/final_report.md) · [`docs/final_report.zh.md`](docs/final_report.zh.md)** — **answers the research questions directly**: what determines the salary, how accurately it can be predicted, and whether a neural network earns its place. The data source, pipeline design, reproduction steps and all engineering detail are in this README.
 
 ---
 
@@ -97,29 +97,36 @@ The IT subset is obtained by slicing `text=` keywords against `region_code`:
 ## Pipeline design
 
 ```
-STAGE 1  DATA MINING
-         keyword x region slicing -> RegEx skill and experience extraction from
-         free text -> salary string validation
-         output: immutable raw JSON snapshots
+STAGE 1  COLLECTION
+         keyword x region slicing, raw JSON snapshots kept immutable
+         output: data/raw/*.json.gz
 
-STAGE 2  DATA PROCESSING
-         salary normalisation -> deduplication -> defect repair policy ->
-         feature table -> quality gates
+STAGE 2  PROCESSING  (the RegEx / DOM extraction runs here)
+         salary normalisation -> deduplication -> defect repair policy
+         -> RegEx skill and experience extraction from free text
+         -> feature table -> quality gates
          output: Parquet analytical table + data-quality report
 
 STAGE 3  PREDICTIVE ANALYTICS
          M0 baseline      (median of the region x education cell)
-         M1 Ridge         (one-hot + TF-IDF)
-         M2 LightGBM
-         M3 small MLP
+         M1 Ridge         (one-hot + full TF-IDF)
+         M2 gradient boosting (sklearn HistGradientBoosting -- same algorithm
+                              family as LightGBM, without the dependency)
+         M3 small MLP     (PyTorch, GPU)
          output: model comparison table + error analysis
 
 STAGE 4  PROOF THAT THE DATA AND RESULTS ARE CORRECT
-         parametrised unit tests -> integration test -> schema tests ->
-         cross-field consistency proof -> leakage audit -> baseline comparison
-         -> robustness analysis
+         parametrised unit tests -> integration test -> leakage audit ->
+         baseline comparison -> robustness analysis
          output: test suite + validation report
 ```
+
+**One mapping deviation, stated plainly.** The brief's "Data Mining (RegEx,
+DOM)" treats acquisition and parsing as one stage; this project splits
+**collection** (Stage 1) from the **RegEx extraction** (Stage 2), because the
+extraction runs against already-collected data while the analytical table is
+built, and separating them lets each be tested on its own. All four stages of
+the brief are present.
 
 **The core of Stage 3 is the M0→M3 comparison.** It answers sub-question 3
 instead of assuming that "neural" means "better".
@@ -165,16 +172,33 @@ untested, metric values are not pinned, the fixture is six records).
 ### Stage 3 modelling results
 
 `train_models.py` compares six models on a **temporal hold-out** (train on the
-14,513 postings before 2026-08-20, test on the 4,886 after it):
+14,513 postings before 2026-08-20, test on the 4,886 after it).
+
+**Two feature designs**, and this matters more than it looks:
+
+- **Sparse design** — one-hot categories + standardised numerics + skill flags +
+  the **full TF-IDF vocabulary** (3,165 columns). A linear model handles it
+  directly; tree models cannot, because they need a dense matrix.
+- **Dense design** — one-hot categories + numerics + skill flags + a **128-
+  component truncated SVD** of the same TF-IDF (293 columns). M1b, M2 and M3
+  receive this matrix **byte-identically**.
 
 | Model | MAE (RUR) | As % of median | R² (log) |
 |---|---:|---:|---:|
 | M0a global train median | 28,594 | 57.2% | −0.177 |
 | M0b (region × education) cell median | 23,674 | 47.3% | 0.187 |
-| M1 Ridge (sparse one-hot + full TF-IDF) | 17,966 | 35.9% | 0.592 |
+| M1 Ridge (sparse design) | 17,966 | 35.9% | 0.592 |
 | M1b Ridge (dense design) | 18,264 | 36.5% | 0.588 |
-| **M2 gradient boosting** | **17,478** | **35.0%** | **0.615** |
-| M3 neural network (PyTorch / RTX 3080) | 17,945 | 35.9% | 0.595 |
+| **M2 gradient boosting (dense design)** | **17,478** | **35.0%** | **0.615** |
+| M3 neural network (PyTorch / RTX 3080, dense design) | 17,945 | 35.9% | 0.595 |
+
+**Why M1b, M2 and M3 must share inputs:** feeding the booster SVD-compressed text
+while giving the linear model the full TF-IDF vocabulary compares feature
+engineering, not model classes. The first version of this script did exactly
+that, and the booster "lost" — a design error, not a finding.
+
+The M1b → M1 gap (1.6% of MAE) is the **measurable contribution of the text
+mining**.
 
 **The neural network does not beat gradient boosting** (R² 0.595 vs 0.615, MAE
 2.7% worse). M2 and M3 receive **byte-identical input matrices**, so this is a
@@ -490,7 +514,7 @@ it-salary-ru/
 │       └── vacancies.parquet           the analytical table (19,578 x 72)
 │
 ├── docs/                           the reports a reader is meant to read
-│   ├── final_report.md                 final report, English (all stages synthesised)
+│   ├── final_report.md                 final report, English (answers the research questions)
 │   ├── final_report.zh.md              final report, Chinese
 │   ├── data_dictionary.md              data dictionary (computed, not hand-written)
 │   ├── data_quality_report.md          Stage 2 gate results and repair impact

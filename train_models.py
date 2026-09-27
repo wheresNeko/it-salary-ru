@@ -83,6 +83,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+# LinAlgWarning lives in scipy, not sklearn.exceptions -- it was removed from
+# the sklearn namespace, and importing it from there fails at module load.
+from scipy.linalg import LinAlgWarning
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.ensemble import (
@@ -101,6 +104,13 @@ from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 from textmining import SKILL_SLUGS
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+# The Design-A matrix is one-hot columns plus TF-IDF, so it is collinear by
+# construction and Ridge reports an ill-conditioned slice on every fit. That is
+# the situation Ridge exists for -- the L2 penalty is the remedy -- so the
+# warning is noise here rather than a signal. Suppressed at the point of use, in
+# `score`-adjacent code, rather than globally.
+warnings.filterwarnings("ignore", category=LinAlgWarning)
 
 HERE = pathlib.Path(__file__).resolve().parent
 TABLE = HERE / "data" / "processed" / "vacancies.parquet"
@@ -434,9 +444,12 @@ def band_task(y_tr_log, y_te_log, X_tr, X_te):
     y_tr = np.digitize(y_tr_log, edges)
     y_te = np.digitize(y_te_log, edges)
     clf = HistGradientBoostingClassifier(
-        max_iter=300, learning_rate=0.08,
-        categorical_features="from_dtype", random_state=RANDOM_STATE,
+        max_iter=300, learning_rate=0.08, random_state=RANDOM_STATE,
     )
+    # `categorical_features="from_dtype"` used to be set here. It was left over
+    # from the ordinal-encoding design: the matrix is now a plain float array of
+    # one-hot columns, so sklearn found no category dtypes and silently ignored
+    # it -- dead code that implied otherwise.
     clf.fit(X_tr, y_tr)
     pred = clf.predict(X_te)
     acc = float(np.mean(pred == y_te))

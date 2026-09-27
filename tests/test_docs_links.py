@@ -22,10 +22,16 @@ HEADING = re.compile(r"^#{1,6}\s+(.*)$")
 
 
 def slug(text: str) -> str:
-    """Approximate GitHub's heading-anchor algorithm."""
+    """Approximate GitHub's heading-anchor algorithm.
+
+    GitHub replaces each space with a hyphen and does NOT collapse runs. That
+    matters for headings containing an em dash: `2.3 Q1 — text` loses the dash
+    but keeps both surrounding spaces, giving `23-q1--text`. Collapsing the run
+    here would report a valid link as broken.
+    """
     s = text.strip().lower()
-    s = re.sub(r"[^\w\s\u0400-\u04ff-]", "", s)
-    return re.sub(r"\s+", "-", s)
+    s = re.sub(r"[^\w\s-]", "", s)
+    return s.replace(" ", "-")
 
 
 def anchors(path: pathlib.Path) -> set[str]:

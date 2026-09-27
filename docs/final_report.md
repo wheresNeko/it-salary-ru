@@ -1,299 +1,334 @@
 # Predicting IT Salary Levels from Russian State Employment Open Data
 
-**What this project found.** This document answers the research questions; the
-[README](../README.md) covers the data source, the pipeline and how to reproduce
-it, and §6 below points to the stage reports that carry the full detail.
+**In one paragraph.** I took 22,387 job adverts published by the Russian state
+employment portal and asked two things: what actually decides the salary on
+offer, and how close a computer model can get to predicting it. The answer to
+the first is *where the job is* — a vacancy in Moscow pays far more than the
+same job elsewhere, and geography matters more than anything the advert asks
+for. The answer to the second is *about a third of a typical salary*: useful for
+judging whether an offer is normal, not for setting one. Along the way I found
+that "IT pays more" is almost entirely an illusion created by IT jobs being
+concentrated in expensive cities, and that a neural network — the fashionable
+choice — was beaten by a simpler model.
 
-*中文版: [final_report.zh.md](final_report.zh.md)*
+*中文版: [final_report.zh.md](final_report.zh.md). Data source, pipeline and reproduction: [README](../README.md).*
 
 ---
 
-## Abstract
+## The answers at a glance
+
+| The question | The short answer |
+|---|---|
+| **What decides the salary?** | Where the job is, first and foremost. Then what kind of work it is. What the advert *asks for* matters least. |
+| **How accurate is the prediction?** | Off by about 35% of a typical salary — closer than any simple rule of thumb, but far from exact. |
+| **Does the advert text need mining?** | Yes, there is no choice — but it is not what drives the prediction. |
+| **Is there an "IT premium"?** | Almost none. It looks like 11%, but it is **+1%** once you account for where the jobs are. |
+| **Was the neural network worth it?** | No. A simpler model won, and won consistently. |
+
+Every number below is reproduced from the committed data by three commands; see
+§7 of the README.
+
+---
+
+## 1. What this project set out to answer
 
 > **Which factors determine the salary level of an IT specialist in the Russian
 > labour market, and how accurately can the offered salary be predicted from the
 > vacancy text and its structured attributes?**
 
-**Where a vacancy is matters more than what it asks for.** Geography is the
-strongest predictor by a wide margin — the Moscow indicator ranks first and the
-coordinates second and third — followed by occupation, then schedule. The free
-text contributes, but through learned components rather than any single named
-skill.
+Three smaller questions break that down, and §2 answers each one:
 
-**Being an IT vacancy is worth almost nothing once you control for that.** The
-raw gap between the IT and non-IT medians is 11.1%; with region, education,
-occupation and skills held constant it falls to **+1.0%**. The apparent premium
-is composition: IT vacancies are concentrated where salaries are already high.
-
-**About a third of a typical salary is the typical error.** MAE is 17,478 RUR
-against a median of 49,999 — 35.0% — with R² = 0.615 on a forward-looking
-temporal hold-out. That is good enough to describe a market and not good enough
-to price an individual offer.
-
-**A neural network did not justify itself.** On byte-identical inputs, gradient
-boosting scores 0.615 against 0.595 for an MLP, and wins on all seven seeds
-tested.
-
----
-
-## 1. The questions
-
-The main question is stated above. Three sub-questions structure the work, and
-each is answered in §2.
-
-| | Sub-question | Answered in |
+| | Question | Answered in |
 |---|---|---|
-| **Q1** | How much salary signal is carried by structured attributes versus free text — and how much of the text must be mined to recover what the portal does not publish structurally? | §2.3 |
-| **Q2** | How large is the IT salary premium once region and qualification are controlled for? | §2.4 |
-| **Q3** | Does the prediction quality justify a neural network, or does a simpler model perform equally well? | §2.5 |
+| **Q1** | How much comes from the structured fields, and how much has to be dug out of the free text? | [§2.3](#23-q1--is-the-text-worth-mining) |
+| **Q2** | How big is the IT salary premium once you account for region and qualification? | [§2.4](#24-q2--is-there-an-it-premium) |
+| **Q3** | Is a neural network worth it, or does a simpler model do just as well? | [§2.5](#25-q3--was-the-neural-network-worth-it) |
 
-Q3 is deliberately falsifiable. The answer is no.
+Q3 was designed to be falsifiable. It would have been easy to build something
+complicated and report a good-looking number; the point was to make it possible
+for the answer to come out *no*. It did.
 
 ---
 
 ## 2. The answers
 
-### 2.1 Which factors determine the salary
+### 2.1 What decides the salary
 
-**Geography first, by a wide margin.** Permutation importance on the best model,
-measured on 3,000 held-out rows:
+> **Where the job is. Then what kind of job it is. The advert's requirements come
+> last.**
 
-| Rank | Feature | Increase in MAE when shuffled |
-|---:|---|---:|
-| 1 | `region_name_Город Москва` | 0.0362 |
-| 2 | `lng` | 0.0287 |
-| 3 | `lat` | 0.0213 |
-| 4 | `specialisation_Образование, наука` | 0.0145 |
-| 5 | `svd_17` (a text component) | 0.0131 |
-| 6 | `schedule_Неполный рабочий день` | 0.0114 |
+To find out which columns the model actually leans on, I scrambled one column at
+a time, left everything else alone, and measured how much worse the predictions
+got. A big drop means the model depended on that column.
 
-Two of the top three are location, and the coordinate features rank nearly as
-high as the Moscow indicator itself — the model is learning a salary surface
-over geography rather than memorising one city. Occupation follows. The free
-text enters at rank 5, and through a **learned component**, not through any
-single named technology.
+![Which columns the model relies on](figures/fig_importance.png)
 
-The ordering is the finding: **where the job is, and what kind of work it is,
-dominate what the advertisement asks for.**
+The three longest bars are **location**: Moscow, then longitude, then latitude.
+The latitude and longitude bars are nearly as long as the Moscow one, which tells
+us the model is not simply memorising one city — it has learned a salary gradient
+across the whole map.
 
-### 2.2 How accurately the salary can be predicted
+Fourth comes the occupation category, then a text component. No individual
+technology — not Python, not SQL, not 1C — appears anywhere near the top.
 
-**MAE 17,478 RUR, R² = 0.615**, on postings created after the training window —
-a forward extrapolation, not an interpolation.
+**The ordering is the finding.** Where a job is located, and what kind of work it
+is, dominate what the advertisement asks for.
 
-| Model | MAE (RUR) | As % of median | R² (log) |
+### 2.2 How accurate the prediction is
+
+> **Off by about 17,500 roubles on a typical salary of 50,000 — roughly a third.
+> Useful for "is this offer normal?", not for "what should this person be paid?".**
+
+The headline numbers, with the two terms explained:
+
+- **MAE (mean absolute error) = 17,478 RUR.** This is the average size of the
+  miss, ignoring direction. If the model predicts a salary, it is wrong by about
+  17,500 roubles on average.
+- **R² = 0.615.** A score from 0 to 1 for how much of the variation between
+  vacancies the model explains. 0 would mean "no better than always guessing the
+  average"; 1 would be perfect. 0.615 means it accounts for about 62% of the
+  differences. (Scores can go negative — M0a below does, meaning it was worse
+  than guessing.)
+
+| Model | MAE (RUR) | As % of median | R² |
 |---|---:|---:|---:|
-| M0a global train median | 28,594 | 57.2% | −0.177 |
-| M0b (region × education) cell median | 23,674 | 47.3% | 0.187 |
-| M1 Ridge — sparse, full TF-IDF | 17,966 | 35.9% | 0.592 |
-| M1b Ridge — dense design | 18,264 | 36.5% | 0.588 |
-| **M2 gradient boosting — dense** | **17,478** | **35.0%** | **0.615** |
-| M3 neural network (MLP) — dense | 17,945 | 35.9% | 0.595 |
+| M0a — always guess the training average | 28,594 | 57.2% | −0.177 |
+| M0b — guess the average for this region and education level | 23,674 | 47.3% | 0.187 |
+| M1 — Ridge on the full text vocabulary | 17,966 | 35.9% | 0.592 |
+| M1b — Ridge on compressed text | 18,264 | 36.5% | 0.588 |
+| **M2 — gradient boosting** | **17,478** | **35.0%** | **0.615** |
+| M3 — neural network | 17,945 | 35.9% | 0.595 |
 
-The best learned model beats the strongest baseline by **26.2%**.
+The best model beats the strongest simple rule by **26.2%**.
 
-**How to read that number.** A third of a typical salary is the typical error.
-The model is useful for questions like "is this offer in the normal band for
-this region and role?" and not for "what exactly should this person be paid?".
-Two further results bound it:
+![Predictions against reality, and the spread of errors](figures/fig_model_diagnostics.png)
 
-- **Moscow is far harder than anywhere else** — MAE 41,657 RUR, more than twice
-  the overall figure. Salary dispersion in the capital is large and the features
-  do not resolve it.
-- **Predictions are systematically low by about 13.8%**, for a reason given in
-  §3.2. Every subgroup shows it.
+Two things to see in that figure.
 
-A secondary classification task — which train-set salary quartile does this fall
-in — reaches 57.5% accuracy against a 28.1% majority baseline, with a macro F1
-of 0.550. The band is usually right; the exact figure rarely is.
+**Left:** each dot is a vacancy, plotted by its real salary (across) against the
+predicted one (up). If predictions were perfect every dot would sit on the dashed
+line. They cluster around it in a broad band — which is exactly what a 35% error
+looks like. Note also how the cloud flattens out at the top right: the model
+never predicts the very highest salaries.
 
-### 2.3 Q1 — structured attributes or free text?
+**Right:** how far off each model was. Every curve sits slightly to the **left**
+of zero, meaning every model tends to *under*-predict. That is systematic, it has
+a cause, and §3.2 explains it.
 
-**The text mining is necessary but is not where the salary signal lives.**
+**One more thing worth knowing: Moscow is much harder.** The average miss there
+is 41,657 roubles — more than twice the overall figure. Salaries in the capital
+vary enormously, and nothing in the advert explains why.
 
-Necessary, because the portal's structured `skills` field is empty on **77.4%**
-of records. Mining recovers at least one skill for 36.7% of records against the
-24.1% that have a structured one — the mining more than doubles the coverage.
+As a side check I also asked the model to sort vacancies into four salary bands
+instead of predicting a number. It gets the band right 57.5% of the time, against
+28.1% for always guessing the most common band. **The band is usually right; the
+exact figure rarely is.**
 
-But its marginal contribution is modest and diffuse:
+### 2.3 Q1 — is the text worth mining?
 
-- Moving from a 128-component SVD compression of the text to the **full TF-IDF
-  vocabulary** is worth **1.6% of MAE** (M1b → M1).
-- No individual skill flag reaches the top six features. The text enters through
-  components that mix many terms.
+> **You have to mine it — the portal leaves the skills field blank three times
+> out of four. But do not expect it to carry the prediction.**
 
-So the honest answer is: mine it, because you cannot answer skill questions
-without it, but **do not expect it to carry the prediction**. Region and
-occupation do that.
+The structured `skills` field is empty on **77.4%** of records. Mining the free
+text recovers at least one skill for 36.7% of records, against 24.1% that have a
+structured one — so the mining more than doubles the coverage. Without it, any
+question about skills simply cannot be answered.
 
-The mining is also where the **most dangerous defects** live — a naive pattern
-misses 43% of C++ vacancies (§3.1).
+But its contribution to *prediction* is modest:
 
-### 2.4 Q2 — how large is the IT premium?
+- Swapping the compressed text for the **full** vocabulary improves the error by
+  **1.6%** and nothing more.
+- No single skill appears in the top features. The text helps only as a blur of
+  many words at once.
 
-**Almost none: +1.0%.**
+So: mine the text, because you need it to describe the market — but the
+prediction is carried by region and occupation, not by technology keywords.
 
-The raw comparison suggests otherwise. The IT median is 50,000 RUR against
-45,000 for the control set — **+11.1%**. But that is not a controlled
-comparison: IT vacancies are concentrated in Moscow and St Petersburg, and in
-higher-qualification occupations.
+**It is also where the most dangerous bugs hide** — see §3.1.
 
-Placing the `is_it` indicator inside a Ridge regression alongside region,
-education, occupation, schedule and skill features:
+### 2.4 Q2 — is there an IT premium?
 
-- coefficient on `is_it` (log scale): **+0.0103**
-- implied salary premium, all else equal: **+1.0%**
+> **Almost none: 1%. It looks like 11%, but that is because IT jobs are
+> concentrated in the expensive cities.**
 
-**The raw gap is therefore almost entirely composition, not a premium.** IT pays
-more in Russia largely because of *where* the jobs are and *what kind* of work
-they are — not because the label "IT" commands a premium.
+The raw comparison suggests a real premium. The middle IT salary is 50,000
+roubles, against 45,000 for everything else — **11.1% higher**.
 
-Read the residual 1% as a partial association, not a causal effect. The controls
-are whatever this dataset measures, and unmeasured differences — seniority,
-contract type, employer sector — remain.
+But that is not a fair comparison. IT vacancies cluster in Moscow and St
+Petersburg, and in better-paid occupations. So I put the "is this IT?" flag into
+a regression alongside region, education, occupation, working hours and skills —
+asking, in effect: *between two otherwise identical vacancies, one IT and one
+not, how much more does the IT one pay?*
 
-### 2.5 Q3 — does the neural network justify itself?
+**The answer: +1.0%.**
 
-**No.**
+The apparent 11% is therefore not a premium for being in IT. It is a premium for
+being in Moscow, doing a well-paid kind of work. **An IT vacancy in Moscow pays
+more because it is in Moscow.**
 
-M2 and M3 receive **byte-identical input matrices**, so the only difference is
-the model class:
+Treat that remaining 1% as a weak association, not proof of cause. The comparison
+only controls for what this dataset happens to record; experience, seniority and
+type of employer are not in it.
 
-| | MAE (RUR) | R² (log) |
+### 2.5 Q3 — was the neural network worth it?
+
+> **No. The simpler model won, and won on every single run.**
+
+The two models were given **exactly the same input data** — the same numbers, in
+the same order. The only difference was the kind of model.
+
+| | Average miss (RUR) | R² |
 |---|---:|---:|
-| M2 gradient boosting | **17,478** | **0.615** |
-| M3 MLP | 17,945 | 0.595 |
+| Gradient boosting | **17,478** | **0.615** |
+| Neural network | 17,945 | 0.595 |
 
-A single seed is not evidence for a neural network, so the MLP was retrained
-under **seven seeds**: R² = 0.6002 ± 0.0038 (range 0.595–0.605). **M2 beats all
-seven, on both metrics.**
+A neural network starts from random values, so a single run proves nothing. I
+retrained it seven times with seven different random starts. Its score wandered
+between 0.595 and 0.605 — and **the simpler model beat all seven**, on both
+measures.
 
-The honest framing matters here. Gradient boosting wins by roughly the width of
-the network's own seed noise — it does not win by a margin that would survive any
-conceivable tuning. What the neural network fails to do is deliver **any benefit
-beyond that noise**, while costing interpretability and a tuning burden.
-
-This comparison is only meaningful because of a design decision: an earlier
-version gave the booster SVD-compressed text while giving the linear model the
-full TF-IDF vocabulary. The booster "lost". That was a design error, not a
-finding, and §4 records it.
+The honest way to put it: the simpler model won by about as much as the neural
+network's own randomness. The point is not that it crushed it. The point is that
+**the neural network delivered no benefit at all beyond its own noise**, while
+being harder to explain and harder to tune.
 
 ---
 
-## 3. Findings that qualify the answers
+## 3. How far to trust these answers
 
-These are not incidental. Each one would have produced a plausible, wrong answer
-had it gone unnoticed.
+### 3.1 Three problems that would have fooled us silently
 
-### 3.1 Three defects that fail silently
+None of these raise an error. Each would have produced a believable, wrong
+answer.
 
-**A zero sentinel that looks like data.** The portal encodes "salary not
-specified" as the literal value `0` — the free text reads `"от 0"` — rather than
-leaving the field null. **179 records (0.91%)**. A model would otherwise learn
-from 0-rouble monthly salaries, and `log(0)` is `-inf`.
+**A salary of zero that means "no salary given".** The portal writes `0` — with
+the text `"от 0"`, "from 0" — when an employer has not stated a salary, instead
+of leaving the field blank. **179 records.** Taken at face value, the model would
+have learned from 0-rouble monthly salaries.
 
-**A field that is not what it says.** `requirement.experience` is documented as
-an integer and reads like a year count. It is neither. Cross-checking against the
-free text settles it: adverts carrying `code = 0` ask for up to **35 years** of
-experience, so `0` cannot mean "none required", while `code = 18` appears on
-adverts reading "от 1 года". The column is an undocumented code and was
-**withdrawn from the feature set** — experience is simply not usable from this
-source.
+**A field that is not what it claims.** `requirement.experience` is documented as
+a whole number of years. It is not. Adverts carrying `0` ask for up to **35
+years** of experience, so `0` cannot mean "no experience needed"; another value
+appears on adverts that say "from 1 year". It is an undocumented internal code,
+so **I removed it from the model entirely** — which means experience is simply
+not available from this source.
 
-**An alphabet trap that costs 43% of a skill.** Russian adverts routinely write
-`C++` with a **Cyrillic** capital С (U+0421), visually identical to the Latin C,
-and Python's `re.IGNORECASE` does not fold Cyrillic onto Latin:
+**The Cyrillic C that hides 43% of a skill.** Russian adverts often write `C++`
+using a **Cyrillic** letter С, which looks identical to the Latin C but is a
+different character. Standard case-insensitive matching does not treat them as
+the same:
 
 ```python
-re.search(r"c\+\+", "С++", re.I)   # -> None    silently missed
+re.search(r"c\+\+", "C++", re.I)   # matches
+re.search(r"c\+\+", "С++", re.I)   # no match -- silently missed
 ```
 
-Measured: 137 vacancies match only the Latin spelling, **102 match only the
-Cyrillic**, 100 use both — a false-negative rate of **102/239 = 43%**. The
-obvious fix, normalising the text, would corrupt ordinary Russian, where `с` is
-one of the most common prepositions. The patterns accept either alphabet at the
-few positions where the confusion occurs instead.
+Counting across the whole dataset: 137 vacancies use only the Latin spelling,
+**102 use only the Cyrillic**, 100 use both. A naive search misses **43%** of all
+C++ vacancies. The tempting fix — rewriting all text to one alphabet — would
+break ordinary Russian, where `с` is one of the commonest words. Instead the
+search accepts either alphabet, but only where the confusion actually happens.
 
-### 3.2 Predictions are systematically low, and it is explainable
+### 3.2 Why predictions are always a little low
 
-The bias is negative in **every** subgroup — IT −7,792 RUR, control −5,519,
-Moscow −21,776, St Petersburg −14,857 — averaging about **−6,900 RUR (13.8% of
-the median)**.
+Look again at the right-hand panel of the figure in §2.2: every error curve sits
+to the left of zero. In every subgroup — IT, non-IT, Moscow, St Petersburg — the
+model under-predicts, by about **6,900 roubles on average, or 13.8%**.
 
-This is not a subgroup artefact but a consequence of the modelling choice.
-Fitting squared error to `log(salary)` estimates the conditional mean *of the
-log*, and exponentiating returns the conditional **median**, which sits below the
-mean for a right-skewed distribution.
+This is not a quirk of one group. It is a direct consequence of a modelling
+choice, and it has a name. Salaries are modelled on a **logarithmic** scale,
+which compares them as multiples rather than differences. Fitting a model that
+way estimates the *middle* of the salary distribution, not its *average* — and
+for salaries, which have a long tail of very high earners, the middle sits below
+the average.
 
-The standard remedies are Duan's smearing estimator or a loss specified in the
-original space. **Neither is applied here**, and the omission is documented
-rather than hidden: fixing it would change every number in §2, which is a
-separate decision from reporting them.
+The standard fix is a correction known as Duan's smearing estimator. **I have not
+applied it**, and I am saying so rather than hiding it: applying it would change
+every number in §2, which is a separate decision from reporting them honestly.
 
-### 3.3 A range that usually is not a range
+### 3.3 A "range" that usually is not one
 
-The free-text salary field is `"от N"` in **100%** of the 21,941 salaried
-records, so the text never carries an upper bound, and `salary_max` equals
-`salary_min` on **38.5%** of the table. Where the bounds are equal the range
-carries no information, so `salary_max` is set to missing and the row flagged.
-Only `salary_min` is modelled.
+Every salaried vacancy writes its pay as `"от N"` — "from N". Not one of them
+gives an upper bound. And on **38.5%** of records the stored maximum is simply a
+copy of the minimum, so it carries no information at all. Those maxima were
+discarded, and the model predicts the lower bound only.
 
 ---
 
 ## 4. What the answers rest on
 
-Stated compactly; the [README](../README.md) and the stage reports carry the
-detail.
+Stated briefly. The [README](../README.md) has the detail.
 
 | | |
 |---|---|
-| **Data** | 22,387 vacancy records from the Trudvsem state employment portal's official open data — 12,656 IT and 9,731 non-IT control, harvested with 2,002 requests across 89 regions |
-| **After processing** | 19,578 rows × 72 columns, **10/10 quality gates** passing; 446 exact and 2,363 near-duplicates removed |
-| **Split** | Temporal, not random: 14,513 postings before 2026-08-20 to train, 4,886 after to test. A random split would be invalid twice over — employers repost identical adverts, and the sample is recency-weighted |
-| **Comparison design** | M1b, M2 and M3 share one byte-identical matrix, so the comparison tests model classes rather than feature engineering |
-| **Leakage audit** | Every column carries an explicit decision. `salary_text` literally reads `"от <target>"` and would have produced a near-perfect, meaningless model |
-| **Validation** | 103 tests, ~16 s, no network, enforced by CI on Python 3.12 and 3.13. They found two real bugs and forced one interface improvement |
+| **The data** | 22,387 adverts from the Trudvsem state employment portal's official open data — 12,656 IT and 9,731 others for comparison |
+| **After cleaning** | 19,578 rows, 72 columns, **10 out of 10 quality checks** passing; 446 exact and 2,363 near-duplicate adverts removed |
+| **How it was tested** | Trained on adverts posted before 20 Aug 2026, tested on those after — so the model is predicting forward, not filling in gaps |
+| **Fair comparison** | The three main models received *identical* data, so the comparison is between model types rather than between feature sets |
+| **Leakage check** | The raw salary text literally reads `"от <the answer>"`. Left in, it would have produced a near-perfect and completely meaningless model. Every column now carries an explicit in-or-out decision |
+| **Automated tests** | 103 tests run in about 16 seconds, with no internet, on every change |
 
-Two limitations of the evidence itself belong here rather than in §5, because
-they bound every number above:
+Two limits belong here rather than in §5, because they apply to every number
+above:
 
-- **The sample is not random.** Each (keyword, region) query returns the API's
-  own ordering and is capped at 100 records. Every figure describes this sample,
-  not the population of Russian vacancies.
-- **No hyper-parameter search was performed.** The comparison is between model
-  classes on reasonable defaults, not between tuned instances.
+- **This is not a random sample.** Each search returns the portal's own ordering
+  and is capped at 100 adverts. Everything here describes *this sample*.
+- **No settings were tuned.** The models were compared at sensible defaults, not
+  at their individually best configurations.
 
 ---
 
 ## 5. What would change these answers
 
-1. **A probability sample.** The current harvest is a convenience sample. Nothing
-   here estimates the national distribution.
-2. **A working date filter.** The API has none that functions, so the temporal
-   split is the only control on drift.
-3. **Experience data.** The one field that would most plausibly improve accuracy
-   is the one that turned out to be an undocumented code.
-4. **A corrected retransformation.** Duan's smearing would remove the systematic
-   13.8% under-prediction and change the MAE figures.
-5. **Salary maxima.** Unusable in 38.5% of records, so the model is trained on
-   lower bounds only.
-6. **The portal skews towards state-sector and blue-collar roles** — IT is a
-   minority of the 522k national vacancies. Conclusions hold within the
-   population the sample describes.
+1. **A random sample.** The current harvest is a convenience sample. Nothing here
+   estimates the true national picture.
+2. **Working date filtering.** The portal's date filters do not work, so the
+   before/after split is the only control on change over time.
+3. **Experience data.** The single field most likely to improve accuracy turned
+   out to be an undocumented code.
+4. **The log correction described in §3.2.** It would remove the systematic
+   13.8% under-prediction and shift the error figures.
+5. **Salary maxima.** Missing or meaningless on 38.5% of records, so only lower
+   bounds are modelled.
+6. **The portal's own bias.** It skews towards state-sector and manual jobs; IT
+   is a small minority of its 522,000 national vacancies. The conclusions hold
+   for the population this sample describes.
+
+---
+
+## Glossary
+
+Plain-language definitions of the terms used above.
+
+| Term | What it means here |
+|---|---|
+| **MAE** (mean absolute error) | The average size of the prediction miss, in roubles, ignoring direction. Lower is better. |
+| **R²** | How much of the variation between salaries the model explains, from 0 (no better than guessing the average) to 1 (perfect). Can be negative if the model is worse than guessing. |
+| **Baseline** | A deliberately dumb rule to beat. M0a guesses one number for everything; M0b guesses the average for each region-and-education combination. |
+| **Ridge regression** | Linear regression with a built-in penalty that stops it clinging to noise. |
+| **Gradient boosting** | A model that builds many small decision trees, each one correcting the previous ones' mistakes. |
+| **MLP** (multilayer perceptron) | A small neural network. The "M3" model here. |
+| **Temporal hold-out** | Training on older records and testing on newer ones, so the model is predicting forward rather than filling in gaps. |
+| **Permutation importance** | How much worse the model gets when one column's values are shuffled and everything else is left alone. Larger means the model leans on that column more. |
+| **TF-IDF** | A way of turning text into numbers that emphasises words distinctive to a vacancy rather than words that are merely common. |
+| **SVD component** | A compressed stand-in for the text. Instead of thousands of individual words, the model gets a smaller set of blended "topics". |
+| **One-hot encoding** | Turning a category such as a region name into a set of yes/no columns. |
+| **Leakage** | Accidentally letting the answer into the inputs. It produces flattering scores and a useless model. |
+| **Log scale** | Comparing salaries as multiples ("twice as much") rather than differences ("20,000 more"). |
+| **Retransformation bias** | The systematic under-prediction explained in §3.2, caused by modelling on a log scale and converting back. |
 
 ---
 
 ## 6. References
 
-The four stage reports carry the full detail behind every claim above.
-
 | Document | Covers |
 |---|---|
-| [data_dictionary.md](data_dictionary.md) | Field structure, presence rates, and every measured defect |
-| [data_quality_report.md](data_quality_report.md) | Row accounting, the 10 quality gates, the repair policies |
-| [model_report.md](model_report.md) | The leakage audit, the full comparison, feature importance, error analysis, the seed sweep |
-| [validation_report.md](validation_report.md) | The test seams, the bugs they found, and what validation does not prove |
+| [data_dictionary.md](data_dictionary.md) | Every field, how often it is filled in, and every measured defect |
+| [data_quality_report.md](data_quality_report.md) | Row-by-row accounting, the 10 quality checks, the repair rules |
+| [model_report.md](model_report.md) | The leakage audit, the full comparison, error analysis, the seven-seed test |
+| [validation_report.md](validation_report.md) | The automated tests, the two bugs they caught, and what they do not prove |
 
-Data source: Trudvsem open data — https://opendata.trudvsem.ru/api/v1/vacancies
-(terms: https://trudvsem.ru/opendata/api). hh.ru was evaluated and rejected; see
-the README. Licence: [MIT](../LICENSE), with a data notice for `data/raw/`.
+**Data source:** Trudvsem open data — https://opendata.trudvsem.ru/api/v1/vacancies
+(terms: https://trudvsem.ru/opendata/api). hh.ru was evaluated first and rejected;
+see the README. **Licence:** [MIT](../LICENSE), with a separate data notice for
+`data/raw/`.

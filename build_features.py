@@ -574,6 +574,24 @@ def write_report(df: pd.DataFrame, gates: Gates, dedupe_lines: list[str],
 # Main
 # --------------------------------------------------------------------------
 
+def build_table(it_path: pathlib.Path, ctrl_path: pathlib.Path,
+                dedupe_lines: list[str] | None = None) -> pd.DataFrame:
+    """The analytical table exactly as Stage 3 receives it.
+
+    This exists because the transformation used to live inside `main()`, which
+    also writes files — so nothing could obtain the real output without running
+    the whole script. The integration tests called the individual steps and got
+    a *different* frame, still carrying the two scratch columns that `main()`
+    drops. Extracting this function is what the test forced.
+    """
+    rows = ([flatten(r, True) for r in load_raw(it_path)]
+            + [flatten(r, False) for r in load_raw(ctrl_path)])
+    df = derive(pd.DataFrame(rows))
+    df = dedupe(df, dedupe_lines if dedupe_lines is not None else [])
+    # Drop the scratch columns that carried the repair decision.
+    return df.drop(columns=["_salary_open_ended", "_salary_max_repaired"])
+
+
 def main() -> None:
     it_path = RAW / "trudvsem_it_harvest.json.gz"
     ctrl_path = RAW / "trudvsem_control_harvest.json.gz"
@@ -587,18 +605,11 @@ def main() -> None:
     src_counts = {"it": len(it_raw), "control": len(ctrl_raw)}
     print(f"  loaded {len(it_raw):,} IT + {len(ctrl_raw):,} control records")
 
-    rows = [flatten(r, True) for r in it_raw] + \
-           [flatten(r, False) for r in ctrl_raw]
-    df = pd.DataFrame(rows)
-    print(f"  flattened to {len(df):,} rows x {df.shape[1]} columns")
-
-    df = derive(df)
-    print(f"  derived modelling columns -> {df.shape[1]} columns")
+    dedupe_lines: list[str] = []
+    df = build_table(it_path, ctrl_path, dedupe_lines)
+    print(f"  analytical table: {len(df):,} rows x {df.shape[1]} columns")
     print(f"  salary present: {int(df['has_salary'].sum()):,} / {len(df):,} "
           f"({100*df['has_salary'].mean():.2f}%)")
-
-    dedupe_lines: list[str] = []
-    df = dedupe(df, dedupe_lines)
     print("  dedupe: " + "; ".join(l.strip("- ") for l in dedupe_lines))
 
     gates = Gates()
@@ -607,8 +618,6 @@ def main() -> None:
     for name, expected, actual, ok in gates.rows:
         print(f"    [{'PASS' if ok else 'FAIL'}] {name}: {actual}")
 
-    # Drop the scratch columns used to carry the repair decision.
-    df = df.drop(columns=["_salary_open_ended", "_salary_max_repaired"])
     df.to_parquet(TABLE_PATH, index=False)
     print(f"  wrote {TABLE_PATH.relative_to(HERE)}  "
           f"({TABLE_PATH.stat().st_size / 1e6:.1f} MB)")

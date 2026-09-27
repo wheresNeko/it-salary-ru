@@ -55,7 +55,8 @@ by name rather than by omission, because `salary_text` literally reads
 | `company_name` | free-text employer name; high cardinality, weak prior |
 | `company_inn` | identifier for the employer |
 | `code_profession` | administrative code, redundant with specialisation |
-| `typical_position` | free text, folded into the TF-IDF field |
+| `region_code` | deterministic recoding of region_name, which is a feature |
+| `currency` | the constant «руб.» on every record; zero variance |
 | `creation_date` | used to build the temporal split; must not be a feature |
 | `date_modify` | used for near-duplicate resolution in Stage 2 |
 | `creation_ts` | used to build the temporal split; must not be a feature |
@@ -67,8 +68,6 @@ by name rather than by omission, because `salary_text` literally reads
 | `experience_years_text` | the raw form of the above |
 | `experience_source` | describes coverage, not the vacancy |
 | `social_protected` | quota flag, not a wage determinant |
-| `text_blob` | kept, see TEXT_SOURCES |
-| `qualification` | free text (5,107 distinct, up to 1,156 chars), folded into the TF-IDF field |
 
 **Used as features:**
 
@@ -104,14 +103,14 @@ RUR after exponentiating back from the log scale.
 |---|---:|---:|---:|---:|---:|
 | M0a global train median | 28,594 | 57.2% | 15,000 | 0.4348 | -0.177 |
 | M0b (region x education) median | 23,674 | 47.3% | 12,668 | 0.3542 | 0.187 |
-| M1 Ridge — sparse one-hot + full TF-IDF | 17,963 | 35.9% | 10,240 | 0.2550 | 0.592 |
-| M1b Ridge — dense design | 18,262 | 36.5% | 10,402 | 0.2560 | 0.588 |
-| M2 gradient boosting — dense design | 17,554 | 35.1% | 9,751 | 0.2471 | 0.613 |
-| M3 neural network (MLP, PyTorch) — dense design | 17,946 | 35.9% | 9,991 | 0.2517 | 0.596 |
+| M1 Ridge — sparse one-hot + full TF-IDF | 17,966 | 35.9% | 10,224 | 0.2550 | 0.592 |
+| M1b Ridge — dense design | 18,264 | 36.5% | 10,402 | 0.2560 | 0.588 |
+| M2 gradient boosting — dense design | 17,478 | 35.0% | 9,692 | 0.2461 | 0.615 |
+| M3 neural network (MLP, PyTorch) — dense design | 17,945 | 35.9% | 10,032 | 0.2516 | 0.595 |
 
 The best baseline is off by **23,674 RUR** on average; the
-best learned model (M2 gradient boosting — dense design) by **17,554 RUR** — an
-improvement of **25.9%**.
+best learned model (M2 gradient boosting — dense design) by **17,478 RUR** — an
+improvement of **26.2%**.
 
 Going from the dense design to the full TF-IDF vocabulary (M1b → M1) moves
 Ridge's MAE by **-1.7%**. That is the measurable value of the text
@@ -121,8 +120,8 @@ the SVD summary alone.
 ### Does the neural network justify itself?
 
 **No.** M3 and M2 were given *identical* input matrices, so the only
-difference is the model class. The MLP is **+2.2% worse** on MAE
-and its R² is 0.596 against 0.613 for
+difference is the model class. The MLP is **+2.7% worse** on MAE
+and its R² is 0.595 against 0.615 for
 gradient boosting. That is the answer to research sub-question 3 for
 this dataset: the added capacity of a neural network buys nothing on
 tabular data of this size, and it costs interpretability. The simpler
@@ -138,20 +137,20 @@ identical matrix:
 
 | MLP seed | R² (log) | MAE (RUR) |
 |---|---:|---:|
-| 0 | 0.5658 | 18,480 |
-| 1 | 0.5981 | 17,869 |
-| 7 | 0.5962 | 17,936 |
-| 42 | 0.5956 | 17,946 |
-| 123 | 0.6025 | 17,762 |
-| 2024 | 0.6012 | 17,759 |
-| 99999 | 0.6054 | 17,787 |
-| **M2 gradient boosting** | **0.6131** | **17,554** |
+| 0 | 0.5961 | 17,882 |
+| 1 | 0.5976 | 17,879 |
+| 7 | 0.6028 | 17,817 |
+| 42 | 0.5954 | 17,945 |
+| 123 | 0.6032 | 17,753 |
+| 2024 | 0.6008 | 17,771 |
+| 99999 | 0.6053 | 17,791 |
+| **M2 gradient boosting** | **0.6151** | **17,478** |
 
-Across seeds the MLP scores R² = 0.5950 ± 0.0134
-(min 0.5658, max 0.6054) and MAE 17,934 ± 253.
+Across seeds the MLP scores R² = 0.6002 ± 0.0038
+(min 0.5954, max 0.6053) and MAE 17,834 ± 70.
 
 **M2 beats every one of the 7 seeds on both metrics.**
-Its margin over the *best* seed is 205 RUR,
+Its margin over the *best* seed is 275 RUR,
 which is comparable to the seed-to-seed spread itself — so the
 conclusion is sound, but the honest framing is that gradient boosting
 wins by about the width of the neural network's own noise, not by a
@@ -164,7 +163,7 @@ indicator sits inside the Ridge model alongside region, education,
 schedule, occupation and skill features, so its coefficient is the**
 controlled** premium.
 
-- Ridge coefficient on `is_it` (log scale): **+0.0104**
+- Ridge coefficient on `is_it` (log scale): **+0.0103**
 - implied salary premium, all else equal: **+1.0%**
 
 Read it as a partial association, not a causal effect: the controls are
@@ -177,24 +176,24 @@ Permutation importance on the M2 model, measured on 3,000 test rows.
 
 | Rank | Feature | Increase in MAE when shuffled |
 |---:|---|---:|
-| 1 | `region_name_Город Москва` | 0.0368 |
-| 2 | `lng` | 0.0284 |
-| 3 | `lat` | 0.0214 |
-| 4 | `specialisation_Образование, наука` | 0.0143 |
-| 5 | `svd_17` | 0.0132 |
-| 6 | `schedule_Неполный рабочий день/неполная рабочая неделя` | 0.0115 |
+| 1 | `region_name_Город Москва` | 0.0362 |
+| 2 | `lng` | 0.0287 |
+| 3 | `lat` | 0.0213 |
+| 4 | `specialisation_Образование, наука` | 0.0145 |
+| 5 | `svd_17` | 0.0131 |
+| 6 | `schedule_Неполный рабочий день/неполная рабочая неделя` | 0.0114 |
 | 7 | `svd_18` | 0.0071 |
-| 8 | `education_Среднее профессиональное образование` | 0.0052 |
-| 9 | `svd_19` | 0.0048 |
-| 10 | `svd_10` | 0.0046 |
-| 11 | `svd_1` | 0.0043 |
-| 12 | `region_name_Город Санкт-Петербург` | 0.0033 |
+| 8 | `education_Среднее профессиональное образование` | 0.0055 |
+| 9 | `svd_19` | 0.0053 |
+| 10 | `svd_10` | 0.0044 |
+| 11 | `svd_1` | 0.0044 |
+| 12 | `region_name_Город Санкт-Петербург` | 0.0036 |
 | 13 | `schedule_Вахтовый метод` | 0.0032 |
-| 14 | `employment_` | 0.0030 |
-| 15 | `specialisation_Производство` | 0.0028 |
-| 16 | `svd_3` | 0.0027 |
-| 17 | `svd_4` | 0.0024 |
-| 18 | `region_name_Московская область` | 0.0017 |
+| 14 | `svd_3` | 0.0028 |
+| 15 | `employment_` | 0.0027 |
+| 16 | `specialisation_Производство` | 0.0026 |
+| 17 | `svd_4` | 0.0023 |
+| 18 | `len_requirements` | 0.0022 |
 
 ![importance](fig_importance.png)
 
@@ -209,22 +208,22 @@ in one direction, which matters more in use than the average error.
 
 | Subgroup | Rows | MAE (RUR) | Bias (RUR) |
 |---|---:|---:|---:|
-| `is_it` = False | 1,871 | 14,886 | -5,730 |
-| `is_it` = True | 3,015 | 19,210 | -7,832 |
-| `salary_open_ended` = False | 2,886 | 14,672 | -4,046 |
-| `salary_open_ended` = True | 2,000 | 21,713 | -11,329 |
-| region `Город Москва` | 458 | 41,821 | -22,692 |
-| region `Город Санкт-Петербург` | 323 | 27,020 | -14,516 |
-| region `Новосибирская область` | 284 | 18,956 | -5,490 |
-| region `Нижегородская область` | 253 | 11,929 | -4,897 |
-| region `Республика Татарстан (Татарстан)` | 243 | 15,574 | -8,329 |
-| region `Свердловская область` | 216 | 13,307 | -4,230 |
-| education: Tребования не предъявляются | 317 | 12,295 | -1,984 |
-| education: Высшее образование — бакалавриат | 1,460 | 18,662 | -8,120 |
-| education: Высшее образование — специалитет, магистрату | 574 | 23,422 | -6,883 |
-| education: Не указано | 318 | 25,825 | -9,037 |
-| education: Общее образование | 472 | 27,403 | -18,315 |
-| education: Среднее профессиональное образование | 1,704 | 11,382 | -3,681 |
+| `is_it` = False | 1,871 | 14,694 | -5,519 |
+| `is_it` = True | 3,015 | 19,206 | -7,792 |
+| `salary_open_ended` = False | 2,886 | 14,665 | -4,026 |
+| `salary_open_ended` = True | 2,000 | 21,536 | -11,100 |
+| region `Город Москва` | 458 | 41,657 | -21,776 |
+| region `Город Санкт-Петербург` | 323 | 27,256 | -14,857 |
+| region `Новосибирская область` | 284 | 18,723 | -5,592 |
+| region `Нижегородская область` | 253 | 11,779 | -4,968 |
+| region `Республика Татарстан (Татарстан)` | 243 | 15,283 | -8,079 |
+| region `Свердловская область` | 216 | 13,087 | -3,754 |
+| education: Tребования не предъявляются | 317 | 12,249 | -1,957 |
+| education: Высшее образование — бакалавриат | 1,460 | 18,583 | -8,018 |
+| education: Высшее образование — специалитет, магистрату | 574 | 23,393 | -6,935 |
+| education: Не указано | 318 | 25,495 | -8,272 |
+| education: Общее образование | 472 | 27,355 | -18,030 |
+| education: Среднее профессиональное образование | 1,704 | 11,340 | -3,667 |
 
 Signed error is defined as prediction minus truth, so a positive bias means
 the model over-prices the subgroup on average.
@@ -235,9 +234,9 @@ The same inputs, discretised into train-set salary quartiles (cut points 10.39, 
 
 | Metric | Value |
 |---|---:|
-| Accuracy | 0.574 |
+| Accuracy | 0.575 |
 | Majority-class baseline | 0.281 |
-| Macro F1 | 0.549 |
+| Macro F1 | 0.550 |
 
 Quartile banding throws away the magnitude information that regression
 keeps, so it is a weaker framing of the same question. It is reported
@@ -288,7 +287,7 @@ split and early stopping:
 - device: **NVIDIA GeForce RTX 3080**
 - parameters: 45,953
 - epochs run: 29 (best at 9)
-- training time: 1.8 s
+- training time: 1.9 s
 
 The GPU is genuinely idle work for a network this small — the matrix is
 4,886 x ~200 and the wall-clock is dominated by the CPU-side TF-IDF and

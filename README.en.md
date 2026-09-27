@@ -1,5 +1,7 @@
 # Predicting IT Salary Levels in the Russian Labour Market
 
+[![tests](https://github.com/wheresNeko/it-salary-ru/actions/workflows/tests.yml/badge.svg)](https://github.com/wheresNeko/it-salary-ru/actions/workflows/tests.yml)
+
 A machine learning project built on open data from the Russian state employment
 portal. The goal is to predict the salary offered for an IT vacancy and to
 quantify which factors actually drive it.
@@ -125,7 +127,37 @@ instead of assuming that "neural" means "better".
 ## Project status
 
 Done: source verification and API reverse-engineering → **Stage 1 full
-collection** → **Stage 2 data processing** → **Stage 3 predictive analytics**.
+collection** → **Stage 2 data processing** → **Stage 3 predictive analytics** →
+**Stage 4 validation**.
+
+### Stage 4 validation results
+
+**94 tests, 4 seams, ~12 s, no network**, run on every push (see the badge):
+
+| Test file | Cases | What it proves |
+|---|---:|---|
+| `tests/test_textmining.py` | 43 | the parsing rules read Russian adverts the way a human would |
+| `tests/test_repair_policy.py` | 15 | the two defect repairs do what the policy claims |
+| `tests/test_leakage.py` | 12 | no target-derived column reaches the model |
+| `tests/test_pipeline_integration.py` | 24 | frozen fixture end to end + corpus-level invariants |
+
+**The suite found two real bugs**: `parse_salary_text("до 50000")` **inverted the
+bounds** (reading "up to 50,000" as a lower bound), and `"Java Script"` with a
+space **matched neither pattern**. Neither affected a published result — 100% of
+the corpus is the shape `"от N"` — but both were latent correctness defects.
+
+**The leakage audit found three documentation contradictions**: 2 columns
+(`region_code`, `currency`) had **never been classified**, and 3
+(`text_blob`, `qualification`, `typical_position`) were **declared both as
+features and as exclusions**.
+
+**The tests also forced a better interface**: `build_table()` did not exist. The
+table's final shape was produced only inside `main()`, which also writes files,
+so nothing could obtain the frame Stage 3 actually receives.
+
+Full detail in [`docs/validation_report.md`](docs/validation_report.md), which
+also **states plainly what this stage does not prove** (the collector is
+untested, metric values are not pinned, the fixture is six records).
 
 ### Stage 3 modelling results
 
@@ -136,22 +168,22 @@ collection** → **Stage 2 data processing** → **Stage 3 predictive analytics*
 |---|---:|---:|---:|
 | M0a global train median | 28,594 | 57.2% | −0.177 |
 | M0b (region × education) cell median | 23,674 | 47.3% | 0.187 |
-| M1 Ridge (sparse one-hot + full TF-IDF) | 17,963 | 35.9% | 0.592 |
-| M1b Ridge (dense design) | 18,262 | 36.5% | 0.588 |
-| **M2 gradient boosting** | **17,554** | **35.1%** | **0.613** |
-| M3 neural network (PyTorch / RTX 3080) | 17,946 | 35.9% | 0.596 |
+| M1 Ridge (sparse one-hot + full TF-IDF) | 17,966 | 35.9% | 0.592 |
+| M1b Ridge (dense design) | 18,264 | 36.5% | 0.588 |
+| **M2 gradient boosting** | **17,478** | **35.0%** | **0.615** |
+| M3 neural network (PyTorch / RTX 3080) | 17,945 | 35.9% | 0.595 |
 
-**The neural network does not beat gradient boosting** (R² 0.596 vs 0.613, MAE
-2.2% worse). M2 and M3 receive **byte-identical input matrices**, so this is a
+**The neural network does not beat gradient boosting** (R² 0.595 vs 0.615, MAE
+2.7% worse). M2 and M3 receive **byte-identical input matrices**, so this is a
 comparison of model classes, not of feature sets — it is the answer to research
 sub-question 3 and one of the project's main findings.
 
 A single seed is not evidence, so the MLP was retrained under **seven seeds**:
-R² = 0.5950 ± 0.0134 (range 0.566–0.605), and **M2 wins on all seven, on both
+R² = 0.6002 ± 0.0038 (range 0.595–0.605), and **M2 wins on all seven, on both
 metrics**. The honest framing is that gradient boosting wins by roughly the width
 of the network's own seed noise.
 
-The best model improves on the strongest baseline (M0b) by **25.9%**. Outputs:
+The best model improves on the strongest baseline (M0b) by **26.2%**. Outputs:
 [`docs/model_report.md`](docs/model_report.md) plus two figures.
 
 **The controlled IT premium is +1.0%.** With `is_it` inside a Ridge regression
@@ -402,6 +434,12 @@ it-salary-ru/
 ├── build_features.py            Stage 2: clean, repair, dedupe, quality gates
 ├── train_models.py              Stage 3: M0-M3 comparison, error analysis, leakage audit
 ├── make_data_dictionary.py      Generates the data dictionary from raw data
+├── tests/                       Stage 4 validation suite (94 cases, no network)
+│   ├── test_textmining.py           43  parsing rules
+│   ├── test_repair_policy.py        15  the repair policy
+│   ├── test_leakage.py              12  leakage invariants
+│   ├── test_pipeline_integration.py 24  end to end + corpus invariants
+│   └── fixtures/raw_sample.json     6 hand-written frozen records
 ├── verification_log.txt         Verification script output
 ├── collection_log.txt           Collection run log
 ├── data/processed/              Analytical table (*.parquet, not committed)
@@ -409,6 +447,7 @@ it-salary-ru/
 │   ├── data_dictionary.md       Data dictionary (computed, not hand-written)
 │   ├── data_quality_report.md   Stage 2 gate results and repair impact
 │   ├── model_report.md          Stage 3 comparison, leakage audit, error analysis
+│   ├── validation_report.md     Stage 4 report, including what it does not prove
 │   └── fig_*.png                Stage 3 figures
 ├── raw_samples/                 Real downloaded data
 │   ├── regions.json                 78 region directory (measured, not hard-coded)
@@ -441,6 +480,7 @@ pip install requests pandas pyarrow
 python collect.py                    # Stage 1 collection (~25 minutes)
 python build_features.py             # Stage 2 -> analytical table + report
 python train_models.py               # Stage 3 -> model report (~45 seconds)
+python -m pytest tests -v            # Stage 4 validation (94 cases, ~12 seconds)
 python make_data_dictionary.py       # regenerate the data dictionary
 python feasibility_check.py          # 8 source-verification checks
 ```
@@ -464,8 +504,8 @@ Environment: Anaconda Python 3.14.6 at `C:\ProgramData\anaconda3\python.exe`.
 | ✅ Done | **Stage 1 full collection** | 22,387 raw records, 78-region directory, data dictionary |
 | ✅ Done | **Stage 2 cleaning, RegEx extraction, quality gates** | 19,578-row analytical table, 10/10 gates |
 | ✅ Done | **Stage 3 predictive analytics (M0–M3)** | Model report, error analysis, two figures |
-| Next | **Stage 4** unit tests, integration test, leakage audit | Test suite, validation report |
-| | Write-up and presentation | Final report, reproducible repository |
+| ✅ Done | **Stage 4 unit tests, integration test, leakage audit** | 94 tests, CI workflow, validation report |
+| Next | Write-up and presentation | Final report, reproducible repository |
 
 ---
 

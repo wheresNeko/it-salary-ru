@@ -58,7 +58,7 @@ SKILL_PATTERNS: dict[str, str] = {
     "c#":         _LB + _C + r"\s*#",
     "python":     _LB + r"python",
     "java":       _LB + r"java(?!\s*script)",
-    "javascript": _LB + r"javascript|" + _LB + r"js" + _RB,
+    "javascript": _LB + r"java\s*script|" + _LB + r"js" + _RB,
     "typescript": _LB + r"typescript",
     "sql":        _LB + r"sql",
     "postgresql": _LB + r"postgres",
@@ -104,7 +104,7 @@ def extract_skills(*texts: str | None) -> frozenset[str]:
 # but the parser must not assume that -- the dataset can change.
 _SALARY_RE = re.compile(
     r"""
-    (?P<lo_prefix>от|с)?\s*
+    (?P<lo_prefix>от|до|с)?\s*
     (?P<lo>\d[\d\s\u00a0]*)
     (?:\s*(?:до|-|—|–)\s*(?P<hi>\d[\d\s\u00a0]*))?
     """,
@@ -126,13 +126,24 @@ def parse_salary_text(text: str | None) -> tuple[int | None, int | None]:
     (40000, None)
     >>> parse_salary_text("от 40 000 до 60 000")
     (40000, 60000)
+    >>> parse_salary_text("до 50000")
+    (None, 50000)
+
+    A leading "до" states an upper bound only. Reading its number as the low
+    bound inverts the advert's meaning, and the pipeline uses the low bound as
+    the regression target, so the prefix is honoured explicitly.
     """
     if not text:
         return None, None
     m = _SALARY_RE.search(text)
     if not m:
         return None, None
-    return _to_int(m.group("lo")), _to_int(m.group("hi"))
+
+    low, high = _to_int(m.group("lo")), _to_int(m.group("hi"))
+    prefix = (m.group("lo_prefix") or "").strip().lower()
+    if prefix == "до":
+        return None, low
+    return low, high
 
 
 # --------------------------------------------------------------------------

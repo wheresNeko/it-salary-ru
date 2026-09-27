@@ -137,6 +137,11 @@ BOOLEAN = ["company_has_site", "company_is_hr_agency", "is_it"]
 # caught by the gradient booster, which refuses cardinality above 255.
 TEXT_SOURCES = ["text_blob", "job_name", "qualification", "typical_position"]
 
+# Feature columns built in `load()` rather than read from the table. Declared
+# separately so the leakage audit can tell a legitimately derived feature apart
+# from a stale name left behind by a rename.
+DERIVED_FEATURES = {"creation_month"}
+
 # min_df=10 rather than 5: the corpus is small enough that rarer n-grams are
 # mostly noise, and it roughly halves the vocabulary build time.
 TFIDF_KWARGS = dict(max_features=3000, min_df=10, ngram_range=(1, 2),
@@ -184,7 +189,8 @@ OTHER_EXCLUSIONS = {
     "company_name": "free-text employer name; high cardinality, weak prior",
     "company_inn": "identifier for the employer",
     "code_profession": "administrative code, redundant with specialisation",
-    "typical_position": "free text, folded into the TF-IDF field",
+    "region_code": "deterministic recoding of region_name, which is a feature",
+    "currency": "the constant «руб.» on every record; zero variance",
     "creation_date": "used to build the temporal split; must not be a feature",
     "date_modify": "used for near-duplicate resolution in Stage 2",
     "creation_ts": "used to build the temporal split; must not be a feature",
@@ -196,9 +202,6 @@ OTHER_EXCLUSIONS = {
     "experience_years_text": "the raw form of the above",
     "experience_source": "describes coverage, not the vacancy",
     "social_protected": "quota flag, not a wage determinant",
-    "text_blob": "kept, see TEXT_SOURCES",
-    "qualification": "free text (5,107 distinct, up to 1,156 chars), folded "
-                     "into the TF-IDF field",
 }
 
 # --------------------------------------------------------------------------

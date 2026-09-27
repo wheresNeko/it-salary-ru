@@ -1,5 +1,7 @@
 # 俄罗斯 IT 岗位薪资预测
 
+[![tests](https://github.com/wheresNeko/it-salary-ru/actions/workflows/tests.yml/badge.svg)](https://github.com/wheresNeko/it-salary-ru/actions/workflows/tests.yml)
+
 基于俄罗斯国家就业门户开放数据的机器学习项目。目标是从招聘信息中预测 IT 岗位的薪资水平，并量化「哪些因素真正决定薪资」。
 
 > **English version: [README.en.md](README.en.md)**
@@ -102,7 +104,26 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 ## 项目现状
 
-已完成：数据源验证与 API 行为逆向 → **Stage 1 全量采集** → **Stage 2 数据加工** → **Stage 3 预测分析**。
+已完成：数据源验证与 API 行为逆向 → **Stage 1 全量采集** → **Stage 2 数据加工** → **Stage 3 预测分析** → **Stage 4 验证**。
+
+### Stage 4 验证结果
+
+**94 项测试，4 个接缝，约 12 秒，不需要网络**，每次 push 自动跑（见徽标）：
+
+| 测试文件 | 用例 | 证明什么 |
+|---|---:|---|
+| `tests/test_textmining.py` | 43 | 解析规则读俄语广告的方式与人类一致 |
+| `tests/test_repair_policy.py` | 15 | 两个数据缺陷的修复策略按声明执行 |
+| `tests/test_leakage.py` | 12 | 没有任何目标派生列进入模型 |
+| `tests/test_pipeline_integration.py` | 24 | 冻结 fixture 端到端 + 真实语料的不变量 |
+
+**测试抓出两个真 bug**：`parse_salary_text("до 50000")` **把上下界弄反了**（把"最高 5 万"读成了"最低 5 万"），以及 `"Java Script"`（带空格）**两个模式都不匹配**。两者都不影响已发布的结论 —— 语料里 100% 是 `"от N"`，但它们是潜伏的正确性缺陷。
+
+**泄漏审计抓出三处文档矛盾**：2 列（`region_code`、`currency`）**从未被分类**；3 列（`text_blob`、`qualification`、`typical_position`）**同时被声明为特征和排除项**。
+
+**测试还逼出一个更好的接口**：`build_table()` 原本不存在 —— 表格的最终形态只在 `main()` 里产生，而 `main()` 还负责写文件，所以测试拿不到「Stage 3 实际看到的那张表」。
+
+详情见 [`docs/validation_report.md`](docs/validation_report.md)，其中也**明确列出了这个阶段没有证明的东西**（采集器无测试、指标值未被测试钉住、fixture 只有 6 条）。
 
 ### Stage 3 建模结果
 
@@ -112,16 +133,16 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 |---|---:|---:|---:|
 | M0a 全局训练中位数 | 28,594 | 57.2% | −0.177 |
 | M0b 地区×学历格中位数 | 23,674 | 47.3% | 0.187 |
-| M1 Ridge（稀疏 one-hot + 完整 TF-IDF） | 17,963 | 35.9% | 0.592 |
-| M1b Ridge（稠密设计） | 18,262 | 36.5% | 0.588 |
-| **M2 梯度提升** | **17,554** | **35.1%** | **0.613** |
-| M3 神经网络（PyTorch / RTX 3080） | 17,946 | 35.9% | 0.596 |
+| M1 Ridge（稀疏 one-hot + 完整 TF-IDF） | 17,966 | 35.9% | 0.592 |
+| M1b Ridge（稠密设计） | 18,264 | 36.5% | 0.588 |
+| **M2 梯度提升** | **17,478** | **35.0%** | **0.615** |
+| M3 神经网络（PyTorch / RTX 3080） | 17,945 | 35.9% | 0.595 |
 
-**结论：神经网络没有跑赢梯度提升**（R² 0.596 vs 0.613，MAE 高 2.2%）。M2 与 M3 输入矩阵**逐字节相同**，所以这是纯粹的模型类别对比，不是特征对比 —— 这正是研究子问题 3 的答案，也是本项目的核心发现之一。
+**结论：神经网络没有跑赢梯度提升**（R² 0.595 vs 0.615，MAE 高 2.7%）。M2 与 M3 输入矩阵**逐字节相同**，所以这是纯粹的模型类别对比，不是特征对比 —— 这正是研究子问题 3 的答案，也是本项目的核心发现之一。
 
-单个随机种子不算证据，所以 M3 又用 **7 个种子**重训了一遍：R² = 0.5950 ± 0.0134（0.566–0.605），**M2 在全部 7 个种子上、两个指标上都胜出**。诚实的表述是：梯度提升赢的幅度大致等于神经网络自身的种子噪声宽度。
+单个随机种子不算证据，所以 M3 又用 **7 个种子**重训了一遍：R² = 0.6002 ± 0.0038（0.595–0.605），**M2 在全部 7 个种子上、两个指标上都胜出**。诚实的表述是：梯度提升赢的幅度大致等于神经网络自身的种子噪声宽度。
 
-比最强基线（M0b）改善 **25.9%**。产出 [`docs/model_report.md`](docs/model_report.md) 与两张图。
+比最强基线（M0b）改善 **26.2%**。产出 [`docs/model_report.md`](docs/model_report.md) 与两张图。
 
 **控制变量后的 IT 溢价：+1.0%**。`is_it` 放进 Ridge 与其他特征一起回归，系数换算成年化薪资差异只有 1% —— 和 Stage 2 里"IT 中位数比对照组高 5,000 卢布"的**原始差距**对比鲜明：那个差距几乎完全由地区、学历、职业结构解释掉了。
 
@@ -309,6 +330,12 @@ it-salary-ru/
 ├── build_features.py             Stage 2 加工：清洗、修复、去重、质量门禁
 ├── train_models.py               Stage 3 建模：M0→M3 对比、误差分析、泄漏审查
 ├── make_data_dictionary.py       从原始数据生成数据字典
+├── tests/                        Stage 4 验证套件（94 项，无需网络）
+│   ├── test_textmining.py            43 项：解析规则
+│   ├── test_repair_policy.py         15 项：修复策略
+│   ├── test_leakage.py               12 项：泄漏不变量
+│   ├── test_pipeline_integration.py  24 项：端到端 + 语料不变量
+│   └── fixtures/raw_sample.json      6 条手工构造的冻结输入
 ├── verification_log.txt          验证脚本输出
 ├── collection_log.txt            采集运行日志
 ├── data/processed/               分析表（*.parquet 不入库，可重新生成）
@@ -316,6 +343,7 @@ it-salary-ru/
 │   ├── data_dictionary.md        数据字典（由脚本从数据算出，非手写）
 │   ├── data_quality_report.md    Stage 2 质量门禁与修复影响
 │   ├── model_report.md           Stage 3 模型对比、泄漏审查、误差分析
+│   ├── validation_report.md      Stage 4 验证报告（含未覆盖项）
 │   └── fig_*.png                 Stage 3 图表
 ├── raw_samples/                  真实抓取的数据
 │   ├── regions.json                  78 个地区目录（实测得出，非硬编码）
@@ -347,6 +375,7 @@ pip install requests pandas pyarrow
 python collect.py                    # Stage 1 采集（约 25 分钟）
 python build_features.py             # Stage 2 加工 → 分析表 + 质量报告
 python train_models.py               # Stage 3 建模 → 模型报告（约 45 秒）
+python -m pytest tests -v            # Stage 4 验证（94 项，约 12 秒）
 python make_data_dictionary.py       # 从原始数据重新生成数据字典
 python feasibility_check.py          # 8 项数据源验证检查
 ```
@@ -367,8 +396,8 @@ python feasibility_check.py          # 8 项数据源验证检查
 | ✅ 已完成 | **Stage 1 全量采集** | 22,387 条原始数据、78 地区目录、数据字典 |
 | ✅ 已完成 | **Stage 2 清洗、RegEx 抽取、质量门禁** | 19,578 行分析表、10/10 门禁报告 |
 | ✅ 已完成 | **Stage 3 预测分析（M0→M3 对比）** | 模型报告、误差分析、两张图 |
-| 下一步 | **Stage 4** 单元测试、集成测试、泄漏审查 | 测试套件、验证报告 |
-| | 成文与展示 | 最终报告、可复现仓库 |
+| ✅ 已完成 | **Stage 4 单元测试、集成测试、泄漏审查** | 94 项测试、CI 工作流、验证报告 |
+| 下一步 | 成文与展示 | 最终报告、可复现仓库 |
 
 ---
 

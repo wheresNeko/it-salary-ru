@@ -1,0 +1,61 @@
+name: tests
+
+# The professor's pipeline ends with "prove the data is correct". This is that
+# claim enforced on every push, rather than asserted in prose.
+#
+# The suite needs no network and no download: the frozen fixture covers the
+# repair and deduplication logic, and the committed gzipped harvests cover the
+# corpus-level invariants. Nothing here calls the Trudvsem API.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 is the floor: pandas 3.x and scikit-learn 1.9 are pinned against
+        # it. 3.13 is what the project was developed on.
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # torch is intentionally absent: Stage 3 falls back to sklearn's MLP
+          # when CUDA is unavailable, and no test depends on the GPU path.
+          pip install requests pandas pyarrow scikit-learn numpy pytest matplotlib
+
+      - name: Run the test suite
+        run: python -m pytest tests -v
+
+      # Stage 2 and Stage 3 are run as well, because the suite tests their
+      # behaviour while these also prove they still execute end to end.
+      - name: Stage 2 -- data processing
+        run: python build_features.py
+
+      - name: Stage 3 -- predictive analytics
+        run: python train_models.py
+
+      - name: Upload the generated reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-py${{ matrix.python-version }}
+          path: |
+            docs/data_quality_report.md
+            docs/model_report.md
+            docs/fig_*.png
+          if-no-files-found: warn

@@ -4,14 +4,20 @@ Stage 4 of the project pipeline is *"proof that the data is correct"*. This
 document is that proof, and it is enforced rather than asserted: the suite runs
 on every push via [`.github/workflows/tests.yml`](../.github/workflows/tests.yml).
 
-**94 tests, 4 seams, ~12 s, no network.**
+**103 tests, ~16 s, no network.**
 
 ```
 tests/test_textmining.py             43   the parsing rules
 tests/test_repair_policy.py          15   what Stage 2 decides about the data
 tests/test_leakage.py                12   what may not reach the model
 tests/test_pipeline_integration.py   24   the whole Stage 1 -> 2 path
+tests/test_docs_links.py              9   every relative link in every document
 ```
+
+The first four are the seams where claims about the data are checked. The fifth
+is repository hygiene rather than a claim about the data — it exists because a
+restructure that moves 24 files leaves links as the easiest thing to break, and
+a dead link in a document a reader opens is worse than a failing test.
 
 The repository is laid out by pipeline stage — `stage0_source_verification/`
 through `stage3_analytics/`, with `common/` for code more than one stage uses.

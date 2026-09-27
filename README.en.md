@@ -7,6 +7,8 @@ portal. The goal is to predict the salary offered for an IT vacancy and to
 quantify which factors actually drive it.
 
 > **Русская / 中文版: [README.md](README.md)**
+>
+> **📄 Final report (English and Chinese): [`docs/final_report.md`](docs/final_report.md) · [`docs/final_report.zh.md`](docs/final_report.zh.md)** — the four pipeline stages synthesised into one submittable document. This README is the project description and operating manual.
 
 ---
 
@@ -132,7 +134,7 @@ collection** → **Stage 2 data processing** → **Stage 3 predictive analytics*
 
 ### Stage 4 validation results
 
-**94 tests, 4 seams, ~12 s, no network**, run on every push (see the badge):
+**103 tests, ~16 s, no network**, run on every push (see the badge):
 
 | Test file | Cases | What it proves |
 |---|---:|---|
@@ -140,6 +142,7 @@ collection** → **Stage 2 data processing** → **Stage 3 predictive analytics*
 | `tests/test_repair_policy.py` | 15 | the two defect repairs do what the policy claims |
 | `tests/test_leakage.py` | 12 | no target-derived column reaches the model |
 | `tests/test_pipeline_integration.py` | 24 | frozen fixture end to end + corpus-level invariants |
+| `tests/test_docs_links.py` | 9 | every relative link in every document resolves |
 
 **The suite found two real bugs**: `parse_salary_text("до 50000")` **inverted the
 bounds** (reading "up to 50,000" as a lower bound), and `"Java Script"` with a
@@ -438,7 +441,7 @@ produces or consumes it, and code shared by more than one stage lives in
 
 ```
 it-salary-ru/
-├── README.md / README.en.md / requirements.txt
+├── README.md / README.en.md / requirements.txt / LICENSE
 ├── .github/workflows/tests.yml     CI: tests + Stages 1-3 on two Python versions
 │
 ├── common/                         shared across stages
@@ -469,11 +472,12 @@ it-salary-ru/
 │   ├── train_models.py                 M0-M3 comparison, error analysis, leakage audit
 │   └── probe_seed_robustness.py        seven-seed robustness probe (evidence)
 │
-├── tests/                          Stage 4 -- validation suite (94 cases, no network)
+├── tests/                          Stage 4 -- validation suite (103 cases, no network)
 │   ├── test_textmining.py                  43  parsing rules
 │   ├── test_repair_policy.py               15  the repair policy
 │   ├── test_leakage.py                     12  leakage invariants
 │   ├── test_pipeline_integration.py        24  end to end + corpus invariants
+│   ├── test_docs_links.py                   9  documentation link integrity
 │   └── fixtures/raw_sample.json            6 hand-written frozen records
 │
 ├── data/
@@ -486,6 +490,8 @@ it-salary-ru/
 │       └── vacancies.parquet           the analytical table (19,578 x 72)
 │
 ├── docs/                           the reports a reader is meant to read
+│   ├── final_report.md                 final report, English (all stages synthesised)
+│   ├── final_report.zh.md              final report, Chinese
 │   ├── data_dictionary.md              data dictionary (computed, not hand-written)
 │   ├── data_quality_report.md          Stage 2 gate results and repair impact
 │   ├── model_report.md                 Stage 3 comparison, leakage audit, error analysis
@@ -521,7 +527,7 @@ pip install -r requirements.txt
 # The three you will actually use -- the data is committed, so no collection
 python stage2_processing/build_features.py            # Stage 2 -> table + report (~30 s)
 python stage3_analytics/train_models.py               # Stage 3 -> model report (~45 s)
-python -m pytest tests -v                             # Stage 4 validation (94 cases, ~12 s)
+python -m pytest tests -v                             # Stage 4 validation (103 cases, ~16 s)
 
 # On demand
 python stage1_collection/make_data_dictionary.py      # regenerate the data dictionary
@@ -549,8 +555,8 @@ Environment: Anaconda Python 3.14.6 at `C:\ProgramData\anaconda3\python.exe`.
 | ✅ Done | **Stage 1 full collection** | 22,387 raw records, 78-region directory, data dictionary |
 | ✅ Done | **Stage 2 cleaning, RegEx extraction, quality gates** | 19,578-row analytical table, 10/10 gates |
 | ✅ Done | **Stage 3 predictive analytics (M0–M3)** | Model report, error analysis, two figures |
-| ✅ Done | **Stage 4 unit tests, integration test, leakage audit** | 94 tests, CI workflow, validation report |
-| Next | Write-up and presentation | Final report, reproducible repository |
+| ✅ Done | **Stage 4 unit tests, integration test, leakage audit** | 103 tests, CI workflow, validation report |
+| ✅ Done | **Write-up** | Final report ([English](docs/final_report.md) / [Chinese](docs/final_report.zh.md)), MIT licence |
 
 ---
 
@@ -560,3 +566,23 @@ Stated plainly: the portal skews towards state-sector and blue-collar roles, and
 IT accounts for only about 15k of 522k vacancies. That is an objective limitation
 of the source, and conclusions hold only within the population it describes. The
 IT analysis will be national in scope, with Perm presented as a sub-analysis.
+
+---
+
+## Licence
+
+The **code** — `common/`, `stage*/`, `tests/`, and the documentation and figures
+— is released under the [MIT licence](LICENSE). Anyone may use, modify and
+redistribute it.
+
+The **vacancy records under `data/raw/` are not covered by that grant.** They are
+published as official open data by Trudvsem ("Работа России"), operated by
+Роструд, and remain subject to the publisher's terms:
+
+- Source: https://opendata.trudvsem.ru/api/v1/vacancies
+- Terms: https://trudvsem.ru/opendata/api
+
+They are redistributed here in gzipped form **solely so the analysis is
+reproducible** without re-harvesting. Anyone reusing them should consult those
+terms and cite the portal as the source; `stage1_collection/collect.py` can
+regenerate an equivalent dataset directly from the API at any time.

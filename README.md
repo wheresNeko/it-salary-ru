@@ -5,6 +5,8 @@
 基于俄罗斯国家就业门户开放数据的机器学习项目。目标是从招聘信息中预测 IT 岗位的薪资水平，并量化「哪些因素真正决定薪资」。
 
 > **English version: [README.en.md](README.en.md)**
+>
+> **📄 最终报告（中英双语）：[`docs/final_report.zh.md`](docs/final_report.zh.md) · [`docs/final_report.md`](docs/final_report.md)** —— 把四段流程的发现汇总成一份可提交的文档。下面的 README 是项目说明与操作手册。
 
 ---
 
@@ -108,7 +110,7 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 ### Stage 4 验证结果
 
-**94 项测试，4 个接缝，约 12 秒，不需要网络**，每次 push 自动跑（见徽标）：
+**103 项测试，约 16 秒，不需要网络**，每次 push 自动跑（见徽标）：
 
 | 测试文件 | 用例 | 证明什么 |
 |---|---:|---|
@@ -116,6 +118,7 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 | `tests/test_repair_policy.py` | 15 | 两个数据缺陷的修复策略按声明执行 |
 | `tests/test_leakage.py` | 12 | 没有任何目标派生列进入模型 |
 | `tests/test_pipeline_integration.py` | 24 | 冻结 fixture 端到端 + 真实语料的不变量 |
+| `tests/test_docs_links.py` | 9 | 每份文档里的每个相对链接都能解析 |
 
 **测试抓出两个真 bug**：`parse_salary_text("до 50000")` **把上下界弄反了**（把"最高 5 万"读成了"最低 5 万"），以及 `"Java Script"`（带空格）**两个模式都不匹配**。两者都不影响已发布的结论 —— 语料里 100% 是 `"от N"`，但它们是潜伏的正确性缺陷。
 
@@ -326,7 +329,7 @@ Get-Process python | Stop-Process -Force  # 清理
 
 ```
 it-salary-ru/
-├── README.md / README.en.md / requirements.txt
+├── README.md / README.en.md / requirements.txt / LICENSE
 ├── .github/workflows/tests.yml     CI：双 Python 版本跑测试 + Stage 1–3
 │
 ├── common/                         跨阶段共用
@@ -357,11 +360,12 @@ it-salary-ru/
 │   ├── train_models.py                 M0→M3 对比、误差分析、泄漏审查
 │   └── probe_seed_robustness.py       七种子稳健性探测（证据）
 │
-├── tests/                          Stage 4 —— 验证套件（94 项，无需网络）
+├── tests/                          Stage 4 —— 验证套件（103 项，无需网络）
 │   ├── test_textmining.py                  43 项：解析规则
 │   ├── test_repair_policy.py               15 项：修复策略
 │   ├── test_leakage.py                     12 项：泄漏不变量
 │   ├── test_pipeline_integration.py        24 项：端到端 + 语料不变量
+│   ├── test_docs_links.py                   9 项：文档相对链接完整性
 │   └── fixtures/raw_sample.json            6 条手工构造的冻结输入
 │
 ├── data/
@@ -374,6 +378,8 @@ it-salary-ru/
 │       └── vacancies.parquet           分析表（19,578 行 × 72 列）
 │
 ├── docs/                           给读者看的报告
+│   ├── final_report.md                 最终报告（英文，汇总全部阶段）
+│   ├── final_report.zh.md              最终报告（中文）
 │   ├── data_dictionary.md              数据字典（由脚本从数据算出，非手写）
 │   ├── data_quality_report.md          Stage 2 质量门禁与修复影响
 │   ├── model_report.md                 Stage 3 模型对比、泄漏审查、误差分析
@@ -402,7 +408,7 @@ pip install -r requirements.txt
 # 日常用到的三个（数据已在库中，无需重新采集）
 python stage2_processing/build_features.py            # Stage 2 → 分析表 + 质量报告（约 30 秒）
 python stage3_analytics/train_models.py               # Stage 3 → 模型报告（约 45 秒）
-python -m pytest tests -v                             # Stage 4 验证（94 项，约 12 秒）
+python -m pytest tests -v                             # Stage 4 验证（103 项，约 16 秒）
 
 # 按需运行
 python stage1_collection/make_data_dictionary.py      # 重新生成数据字典
@@ -426,11 +432,24 @@ python stage0_source_verification/verify_sources.py   # 8 项数据源检查（�
 | ✅ 已完成 | **Stage 1 全量采集** | 22,387 条原始数据、78 地区目录、数据字典 |
 | ✅ 已完成 | **Stage 2 清洗、RegEx 抽取、质量门禁** | 19,578 行分析表、10/10 门禁报告 |
 | ✅ 已完成 | **Stage 3 预测分析（M0→M3 对比）** | 模型报告、误差分析、两张图 |
-| ✅ 已完成 | **Stage 4 单元测试、集成测试、泄漏审查** | 94 项测试、CI 工作流、验证报告 |
-| 下一步 | 成文与展示 | 最终报告、可复现仓库 |
+| ✅ 已完成 | **Stage 4 单元测试、集成测试、泄漏审查** | 103 项测试、CI 工作流、验证报告 |
+| ✅ 已完成 | **成文** | 最终报告（[英](docs/final_report.md) / [中](docs/final_report.zh.md)）、MIT 许可 |
 
 ---
 
 ## 数据源的已知局限
 
-需要如实说明：门户偏向国企和蓝领岗位，IT 仅占约 15k / 522k。这是数据源的客观局限，结论只在该人群内有效。IT 岗位分析将以全俄为主体，彼尔姆作为子分析呈现。
+需要如实说明：门户偏向国企和蓝领岗位，IT 仅占约 15k / 522k。这是数据源的客观局限，结论只在该人群内有效。IT 岗位分析以全俄为主体，彼尔姆作为子分析呈现。
+
+---
+
+## 许可
+
+**代码**（`common/`、`stage*/`、`tests/`、文档与图表）采用 [MIT 许可](LICENSE) —— 任何人可自由使用、修改、再分发。
+
+**`data/raw/` 下的岗位记录不在此授权范围内。** 它们是 Трудвсем（«Работа России»，由 Роструд 运营）发布的官方开放数据，仍受其发布方条款约束：
+
+- 数据来源：https://opendata.trudvsem.ru/api/v1/vacancies
+- 条款：https://trudvsem.ru/opendata/api
+
+以 gzip 形式随仓库分发**仅为使分析可复现**，无需重新采集。复用者应查阅上述条款并引用门户为数据来源；也可以随时用 `stage1_collection/collect.py` 直接从 API 重新生成等价数据集。

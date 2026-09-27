@@ -12,8 +12,9 @@ make the assertion true by construction and unable to disagree with the code.
 
 import pytest
 
-from textmining import (extract_experience_years, extract_skills, job_title_key,
-                        normalise_whitespace, parse_salary_text)
+from common.textmining import (extract_experience_years, extract_skills,
+                               job_title_key, normalise_whitespace,
+                               parse_salary_text)
 
 # --------------------------------------------------------------------------
 # Seam 1a: the free-text salary field

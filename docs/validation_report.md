@@ -13,6 +13,10 @@ tests/test_leakage.py                12   what may not reach the model
 tests/test_pipeline_integration.py   24   the whole Stage 1 -> 2 path
 ```
 
+The repository is laid out by pipeline stage — `stage0_source_verification/`
+through `stage3_analytics/`, with `common/` for code more than one stage uses.
+The tree and the stage mapping are in [`README.md`](../README.md).
+
 ---
 
 ## 1. What "correct" means here
@@ -23,9 +27,9 @@ own seam:
 
 | Claim | Why it is not obvious | Seam |
 |---|---|---|
-| **Parsed correctly** — the RegEx rules read Russian job adverts the way a human would | The defects are silent. A wrong pattern raises nothing; it turns a feature into zero at scale | `textmining.py` public functions |
-| **Repaired correctly** — the two measured defects are handled by a stated policy | The repairs change the regression target, so the target depends on a decision | `build_features.flatten` → `derive` → `dedupe` |
-| **Not leaking** — no target-derived column reaches the model | `salary_text` literally reads `"от <target>"`. It would give a near-perfect, meaningless model | `train_models` column classification |
+| **Parsed correctly** — the RegEx rules read Russian job adverts the way a human would | The defects are silent. A wrong pattern raises nothing; it turns a feature into zero at scale | `common/textmining.py` public functions |
+| **Repaired correctly** — the two measured defects are handled by a stated policy | The repairs change the regression target, so the target depends on a decision | `stage2_processing/build_features.py`: `flatten` → `derive` → `dedupe` |
+| **Not leaking** — no target-derived column reaches the model | `salary_text` literally reads `"от <target>"`. It would give a near-perfect, meaningless model | `stage3_analytics/train_models.py` column classification |
 | **Still working end to end** — the stages agree on the data between them | Each stage passed alone while the interface between them drifted | The full Stage 1 → 2 path |
 
 ### Seams were agreed before any test was written
@@ -138,14 +142,15 @@ stated in §6.
 Stated plainly, because a validation report that only lists successes is
 marketing.
 
-1. **The collector is untested.** `collect.py` owns the network, the retries and
-   the region discovery, and it has no tests: they would either hit the live API
-   or mock it so heavily that they assert the mock. Its behaviour is documented
-   instead, in `api_investigation/` and the README troubleshooting section.
+1. **The collector is untested.** `stage1_collection/collect.py` owns the network,
+   the retries and the region discovery, and it has no tests: they would either
+   hit the live API or mock it so heavily that they assert the mock. Its
+   behaviour is documented instead, in `stage0_source_verification/probes/` and
+   the README troubleshooting section.
 2. **The model metrics are not pinned by a test.** M2's R² is asserted nowhere,
    so §5's drift needed a human to notice. Pinning a float makes a suite that
-   fails on every dependency bump; the seed sweep in `model_report.md` is the
-   robustness evidence instead, and this trade-off is deliberate.
+   fails on every dependency bump; the seed sweep in `docs/model_report.md` is
+   the robustness evidence instead, and this trade-off is deliberate.
 3. **The fixture is six records, not a sample.** It proves the pipeline's *rules*
    hold; it says nothing statistical. Corpus-level claims rest on the committed
    harvest.

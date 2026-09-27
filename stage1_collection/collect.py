@@ -17,7 +17,7 @@ TWO SETS
 HOW COVERAGE IS OBTAINED -- measured constraints, not assumptions
 -----------------------------------------------------------------
 All of the following was established by direct measurement (see
-api_investigation/). Three of them forced the design:
+stage0_source_verification/probes/). Three of them forced the design:
 
 1. **Paging is dead.** `offset > 0` now returns HTTP 200 with ZERO records.
    Earlier in the same session offsets up to 999 returned data, so the
@@ -68,6 +68,16 @@ try:
 except ImportError:
     sys.exit("Missing dependency. Run:  pip install requests")
 
+# --- repository bootstrap -------------------------------------------------
+# This script sits one level below the repository root. Fixing sys.path here
+# rather than relying on the working directory means
+# `python stage1_collection/collect.py` works from anywhere.
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from common import paths  # noqa: E402  (must follow the sys.path fix)
+
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
@@ -76,11 +86,10 @@ API_BASE = "https://opendata.trudvsem.ru/api/v1/vacancies"
 USER_AGENT = "SalaryResearchProject/0.1 (1870037962@qq.com)"
 HEADERS = {"User-Agent": USER_AGENT}
 
-HERE = pathlib.Path(__file__).resolve().parent
-RAW = HERE / "raw_samples"
-RAW.mkdir(exist_ok=True)
-LOG_PATH = HERE / "collection_log.txt"
-REGION_CACHE = RAW / "regions.json"
+RAW = paths.DATA_RAW
+LOG_PATH = paths.COLLECTION_LOG
+REGION_CACHE = paths.REGIONS
+paths.ensure_output_dirs()
 
 PAGE_SIZE = 100         # measured ceiling; larger values are clamped
 WORKERS = 8             # measured: 4 -> 0.56 req/s, 8 -> 1.20 req/s, 0 failures

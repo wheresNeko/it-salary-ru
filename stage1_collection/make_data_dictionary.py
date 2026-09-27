@@ -3,14 +3,15 @@
 """
 Generate docs/data_dictionary.md from the harvested raw data.
 
-Everything in the output is computed from the data itself -- presence rates,
-cardinality, example values and the defect counts. Nothing is hand-written, so
-re-running it after a new harvest keeps the document honest.
+This documents what Stage 1 produced, so it lives with Stage 1. Everything in
+the output is computed from the data itself -- presence rates, cardinality,
+example values and the defect counts. Nothing is hand-written, so re-running it
+after a new harvest keeps the document honest.
 
 Usage
 -----
-    python make_data_dictionary.py
-    python make_data_dictionary.py --it raw_samples/trudvsem_it_harvest.json
+    python stage1_collection/make_data_dictionary.py
+    python stage1_collection/make_data_dictionary.py --it data/raw/trudvsem_it_harvest.json
 """
 
 from __future__ import annotations
@@ -24,10 +25,16 @@ import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 
-HERE = pathlib.Path(__file__).resolve().parent
-RAW = HERE / "raw_samples"
-DOCS = HERE / "docs"
-DOCS.mkdir(exist_ok=True)
+# --- repository bootstrap -------------------------------------------------
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from common import paths  # noqa: E402  (must follow the sys.path fix)
+
+RAW = paths.DATA_RAW
+DOCS = paths.DOCS
+paths.ensure_output_dirs()
 
 MAX_TRACKED_VALUES = 300      # stop counting distinct values past this
 MAX_EXAMPLES = 3
@@ -221,9 +228,9 @@ def defects(records: list[dict], out: list[str]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--it", default=str(RAW / "trudvsem_it_harvest.json.gz"))
-    ap.add_argument("--control", default=str(RAW / "trudvsem_control_harvest.json.gz"))
-    ap.add_argument("--out", default=str(DOCS / "data_dictionary.md"))
+    ap.add_argument("--it", default=str(paths.IT_HARVEST))
+    ap.add_argument("--control", default=str(paths.CONTROL_HARVEST))
+    ap.add_argument("--out", default=str(paths.DATA_DICTIONARY))
     args = ap.parse_args()
 
     out: list[str] = []
@@ -247,7 +254,7 @@ def main() -> None:
             continue
         records = load_records(p)
         total += len(records)
-        out.append(f"Source: `raw_samples/{p.name}`")
+        out.append(f"Source: `{paths.rel(p)}`")
         out.append("")
         analyse(records, label, out)
 
@@ -271,7 +278,7 @@ def main() -> None:
     out.append("")
 
     pathlib.Path(args.out).write_text("\n".join(out), encoding="utf-8")
-    print(f"wrote {args.out}  ({total:,} records, {len(out)} lines)")
+    print(f"wrote {paths.rel(args.out)}  ({total:,} records, {len(out)} lines)")
 
 
 if __name__ == "__main__":

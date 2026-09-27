@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Probe the Trudvsem open-data API and dump a readable structure report."""
+"""Probe the Trudvsem open-data API and dump a readable structure report.
+
+One of the Stage 0 investigation scripts. They are kept because they are the
+reproducible evidence behind the API notes in the README -- for example, that
+`regionCode` is silently ignored while `region_code` filters correctly.
+"""
 import json
 import pathlib
 import sys
@@ -7,10 +12,16 @@ import urllib.parse
 
 import requests
 
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from common import paths  # noqa: E402  (must follow the sys.path fix)
+
 BASE = "https://opendata.trudvsem.ru/api/v1/vacancies"
 HEADERS = {"User-Agent": "SalaryResearchProject/0.1 (1870037962@qq.com)"}
-RAW = pathlib.Path(__file__).resolve().parent / "raw_samples"
-RAW.mkdir(exist_ok=True)
+RAW = paths.DATA_RAW
+paths.ensure_output_dirs()
 
 out = []
 
@@ -55,7 +66,7 @@ vacancies = data["results"]["vacancies"]
 (RAW / "trudvsem_perm_sample.json").write_text(
     json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
 )
-p(f"  saved {len(vacancies)} raw vacancies -> raw_samples/trudvsem_perm_sample.json")
+p(f"  saved {len(vacancies)} raw vacancies -> {paths.rel(RAW)}/trudvsem_perm_sample.json")
 p("")
 p(json.dumps(vacancies[0]["vacancy"], ensure_ascii=False, indent=2)[:3500])
 
@@ -164,7 +175,7 @@ for v in vacancies[:6]:
       f"salary={json.dumps(salary_of(v), ensure_ascii=False):<46} | "
       f"company={str(comp.get('name'))[:28]}")
 
-pathlib.Path(__file__).with_name("trudvsem_probe_report.txt").write_text(
-    "\n".join(out), encoding="utf-8"
-)
+report_path = paths.LOGS / "probe_structure_report.txt"
+report_path.write_text("\n".join(out), encoding="utf-8")
 print("\n".join(out))
+print(f"\n[also written to {paths.rel(report_path)}]")

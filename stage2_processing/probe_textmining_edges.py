@@ -3,11 +3,12 @@
 import pathlib
 import sys
 
-# This probe lives in api_investigation/; textmining.py is one level up.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+# This probe sits one level below the repository root.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from textmining import (extract_skills, extract_experience_years,
-                        job_title_key, normalise_whitespace, parse_salary_text)
+from common.textmining import (extract_skills, extract_experience_years,
+                               job_title_key, normalise_whitespace,
+                               parse_salary_text)
 
 print("=== parse_salary_text ===")
 for s in ["от 40000", "до 50000", "от 40 000", "40000",

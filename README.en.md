@@ -242,13 +242,15 @@ keywords). Stage 2 collapses those into the IT set so the two groups are
 disjoint — otherwise the "IT premium" would partly be a group compared with
 itself.
 
-The region directory `raw_samples/regions.json` records the **78 regions** found
+The region directory [`data/raw/regions.json`](data/raw/regions.json) records the
+**78 regions** found
 by probing codes 1–92; it is measured, not a hard-coded list.
 
 ### Source verification (earlier stage)
 
-`feasibility_check.py` runs 8 checks against the live API; all pass. Output is in
-[`verification_log.txt`](verification_log.txt).
+[`stage0_source_verification/verify_sources.py`](stage0_source_verification/verify_sources.py)
+runs 8 checks against the live API; all pass. Output is in
+[`logs/verification_log.txt`](logs/verification_log.txt).
 
 | Check | Result |
 |---|---|
@@ -258,6 +260,12 @@ by probing codes 1–92; it is measured, not a hard-coded list.
 | RegEx salary parse vs `salary_min` | **100% agreement** |
 | RegEx skill extraction | 1С / python / sql / REST / Excel / Linux / C++ — 22 patterns |
 | `creation-date` range | **2020-08 … 2026-09** |
+
+> The figures above are from that run. `logs/verification_log.txt` is overwritten
+> on every run, and the live Trudvsem database moves — a re-run reports 494,808
+> national vacancies rather than 522,303. Absolute counts in the log differing
+> from the table is expected; the conclusions are what should be compared, not
+> the instantaneous totals.
 
 ---
 
@@ -317,7 +325,7 @@ what the measurement shows.
 ## API notes (read before re-running)
 
 The API has several **silent failure** modes, fully documented in the
-`feasibility_check.py` docstring:
+`stage0_source_verification/verify_sources.py` docstring:
 
 ### Unknown parameter names are silently ignored
 
@@ -327,7 +335,7 @@ country** with HTTP 200 and no warning. The correct name is `region_code`
 
 > ⚠️ A client that does not verify the returned `region.name` will silently train
 > on unfiltered national data.
-> `feasibility_check.py` asserts the returned region on every request.
+> `stage0_source_verification/verify_sources.py` asserts the returned region on every request.
 
 ### Paging stopped working (the behaviour changed mid-investigation)
 
@@ -424,65 +432,101 @@ it was a zombie process stealing CPU.
 
 ## Repository layout
 
+The tree is organised by **pipeline stage**: a file belongs to the stage that
+produces or consumes it, and code shared by more than one stage lives in
+`common/`.
+
 ```
 it-salary-ru/
-├── README.md                    Chinese / Russian-facing notes
-├── README.en.md                 This file
-├── feasibility_check.py         Source verification script (8 checks)
-├── collect.py                   Stage 1 collector (8 concurrent workers)
-├── textmining.py                Pure text mining (skill / salary / experience regexes)
-├── build_features.py            Stage 2: clean, repair, dedupe, quality gates
-├── train_models.py              Stage 3: M0-M3 comparison, error analysis, leakage audit
-├── make_data_dictionary.py      Generates the data dictionary from raw data
-├── tests/                       Stage 4 validation suite (94 cases, no network)
-│   ├── test_textmining.py           43  parsing rules
-│   ├── test_repair_policy.py        15  the repair policy
-│   ├── test_leakage.py              12  leakage invariants
-│   ├── test_pipeline_integration.py 24  end to end + corpus invariants
-│   └── fixtures/raw_sample.json     6 hand-written frozen records
-├── verification_log.txt         Verification script output
-├── collection_log.txt           Collection run log
-├── data/processed/              Analytical table (*.parquet, not committed)
-├── docs/
-│   ├── data_dictionary.md       Data dictionary (computed, not hand-written)
-│   ├── data_quality_report.md   Stage 2 gate results and repair impact
-│   ├── model_report.md          Stage 3 comparison, leakage audit, error analysis
-│   ├── validation_report.md     Stage 4 report, including what it does not prove
-│   └── fig_*.png                Stage 3 figures
-├── raw_samples/                 Real downloaded data
-│   ├── regions.json                 78 region directory (measured, not hard-coded)
-│   ├── sample_3_records.json        3 complete records (human-readable)
-│   ├── trudvsem_it_harvest.json     IT vacancy harvest
-│   ├── trudvsem_control_harvest.json Non-IT control set
-│   └── verification_sample.json     Sample from the verification script
-└── api_investigation/           Probe scripts from the API reverse-engineering
-    ├── probe_structure.py           record field structure
-    ├── probe_params.py              parameter names (how region_code was found)
-    ├── probe_paging.py              pagination parameter
-    ├── probe_limits.py              limit/offset combination limits
-    ├── probe_paging_boundary.py     falsification of the offset*limit hypothesis
-    ├── probe_latency.py             latency attribution (server vs handshake)
-    ├── probe_throttle.py            deep-offset failure and concurrency
-    └── probe_concurrency.py         scaling (4 vs 8 workers)
+├── README.md / README.en.md / requirements.txt
+├── .github/workflows/tests.yml     CI: tests + Stages 1-3 on two Python versions
+│
+├── common/                         shared across stages
+│   ├── paths.py                        the single source of truth for paths
+│   └── textmining.py                   skill / salary / experience regexes (Stage 2 + 3)
+│
+├── stage0_source_verification/     Stage 0 -- is this source usable at all?
+│   ├── verify_sources.py               8 source checks (was feasibility_check.py)
+│   └── probes/                         8 probes from the API reverse-engineering
+│       ├── probe_structure.py              record field structure
+│       ├── probe_params.py                 parameter names (how region_code was found)
+│       ├── probe_paging.py                 pagination parameter
+│       ├── probe_limits.py                 limit/offset combination limits
+│       ├── probe_paging_boundary.py        falsification of the offset*limit hypothesis
+│       ├── probe_latency.py                latency attribution (server vs handshake)
+│       ├── probe_throttle.py               deep-offset failure and concurrency
+│       └── probe_concurrency.py            scaling (4 vs 8 workers)
+│
+├── stage1_collection/              Stage 1 -- acquire the raw data
+│   ├── collect.py                      8 concurrent workers
+│   ├── make_data_dictionary.py         generates the data dictionary from the raw data
+│   └── probe_textmining_edges.py       parsing edge-case probe (evidence)
+│
+├── stage2_processing/              Stage 2 -- raw records -> a modelling table
+│   └── build_features.py               clean, repair, dedupe, quality gates
+│
+├── stage3_analytics/               Stage 3 -- fit and compare models
+│   ├── train_models.py                 M0-M3 comparison, error analysis, leakage audit
+│   └── probe_seed_robustness.py        seven-seed robustness probe (evidence)
+│
+├── tests/                          Stage 4 -- validation suite (94 cases, no network)
+│   ├── test_textmining.py                  43  parsing rules
+│   ├── test_repair_policy.py               15  the repair policy
+│   ├── test_leakage.py                     12  leakage invariants
+│   ├── test_pipeline_integration.py        24  end to end + corpus invariants
+│   └── fixtures/raw_sample.json            6 hand-written frozen records
+│
+├── data/
+│   ├── raw/                        committed, immutable inputs (~13 MB)
+│   │   ├── regions.json                78-region directory (measured, not hard-coded)
+│   │   ├── sample_3_records.json       3 complete records (human-readable)
+│   │   ├── trudvsem_it_harvest.json.gz     IT vacancy harvest
+│   │   └── trudvsem_control_harvest.json.gz Non-IT control set
+│   └── processed/                  derived, gitignored, regenerable
+│       └── vacancies.parquet           the analytical table (19,578 x 72)
+│
+├── docs/                           the reports a reader is meant to read
+│   ├── data_dictionary.md              data dictionary (computed, not hand-written)
+│   ├── data_quality_report.md          Stage 2 gate results and repair impact
+│   ├── model_report.md                 Stage 3 comparison, leakage audit, error analysis
+│   ├── validation_report.md            Stage 4 report, including what it does not prove
+│   └── figures/                        Stage 3 figures
+│
+└── logs/                           what each run produced
+    ├── verification_log.txt
+    └── collection_log.txt
 ```
 
-`api_investigation/` is not scratch work — it is the reproducible evidence behind
-claims such as "`regionCode` does not work" and "paging stopped working".
+The probe scripts are not scratch work — they are the reproducible evidence
+behind claims such as "`regionCode` does not work" and "paging stopped working".
+The same applies to the `probe_*.py` files inside the stage folders.
+
+**The single source of truth for paths is [`common/paths.py`](common/paths.py).**
+Nothing else should build a path from `__file__` — before this restructure, five
+scripts each derived their own, so moving one directory meant editing five files
+plus CI, .gitignore and the documentation.
 
 ---
 
 ## How to run
 
+**Every command runs from the repository root**, referring to the scripts by
+relative path. Each script puts the root on `sys.path` itself, so invoking them
+from elsewhere also works.
+
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
 pip install -r requirements.txt
 
-python collect.py                    # Stage 1 collection (~25 minutes)
-python build_features.py             # Stage 2 -> analytical table + report
-python train_models.py               # Stage 3 -> model report (~45 seconds)
-python -m pytest tests -v            # Stage 4 validation (94 cases, ~12 seconds)
-python make_data_dictionary.py       # regenerate the data dictionary
-python feasibility_check.py          # 8 source-verification checks
+# The three you will actually use -- the data is committed, so no collection
+python stage2_processing/build_features.py            # Stage 2 -> table + report (~30 s)
+python stage3_analytics/train_models.py               # Stage 3 -> model report (~45 s)
+python -m pytest tests -v                             # Stage 4 validation (94 cases, ~12 s)
+
+# On demand
+python stage1_collection/make_data_dictionary.py      # regenerate the data dictionary
+python stage1_collection/collect.py                   # Stage 1 collection (~25 min, hits the API)
+python stage0_source_verification/verify_sources.py   # 8 source checks (hits the API)
 ```
 
 `collect.py` accepts `--budget N` (request cap), `--seconds N` (time cap),

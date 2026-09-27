@@ -20,9 +20,10 @@ import pathlib
 import pandas as pd
 import pytest
 
-import build_features as bf
+from common import paths
+from stage2_processing import build_features as bf
 
-FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "raw_sample.json"
+FIXTURE = paths.RAW_FIXTURE
 
 # Which fixture record came from which sweep. Index 3 is the control twin of
 # index 0: the same vacancy id, and it must lose to the IT copy.

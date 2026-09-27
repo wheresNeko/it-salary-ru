@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trudvsem ("Работа России") Open Data -- Feasibility Check
-=========================================================
+Trudvsem ("Работа России") Open Data -- source verification
+===========================================================
+
+Stage 0. Runs before any collection: it establishes that the source is usable at
+all, and measures the properties that decide how the later stages must be built.
 
 Project:  Predicting IT salary ranges in the Russian labour market
 Source:   https://opendata.trudvsem.ru/api/v1/vacancies
@@ -14,7 +17,7 @@ hh.ru closed its public vacancy search API in April 2026. `GET /vacancies`
 now returns 403 Forbidden for unauthenticated clients; keys are issued only to
 verified employers and recruiting services after moderation. Measured here:
 hh.ru /areas -> 200, /professional_roles -> 200, but /vacancies, /vacancies/{id}
-and /employers -> 403. See REPORT_DRAFT.md section 3.5.
+and /employers -> 403.
 
 Trudvsem is the Russian state employment portal. Its data is published as
 official open data: no key, no registration, no moderation, clearly licensed
@@ -28,7 +31,7 @@ modelling, and it measures the things that decide the design:
   1. connectivity and total national volume
   2. which region codes exist and what they mean
   3. the safe pagination recipe (the API is fussy -- see API_NOTES)
-  4. a real harvest of IT vacancies into raw_samples/
+  4. a real harvest of IT vacancies into data/raw/
   5. salary coverage and the salary_min / salary_max consistency problem
   6. a working RegEx extractor over the free-text `requirements` field
   7. what has to be validated in Stage 4
@@ -63,8 +66,8 @@ API_NOTES -- measured, April-September 2026
 
 Usage
 -----
-    pip install requests
-    python feasibility_check.py
+    pip install -r requirements.txt
+    python stage0_source_verification/verify_sources.py
 """
 
 from __future__ import annotations
@@ -94,10 +97,15 @@ API_BASE = "https://opendata.trudvsem.ru/api/v1/vacancies"
 USER_AGENT = "SalaryResearchProject/0.1 (1870037962@qq.com)"
 HEADERS = {"User-Agent": USER_AGENT}
 
-HERE = pathlib.Path(__file__).resolve().parent
-RAW = HERE / "raw_samples"
-RAW.mkdir(exist_ok=True)
-LOG = HERE / "verification_log.txt"
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from common import paths  # noqa: E402  (must follow the sys.path fix)
+
+RAW = paths.DATA_RAW
+LOG = paths.VERIFICATION_LOG
+paths.ensure_output_dirs()
 
 # The only page size that survives a deep offset sweep.
 PAGE_SIZE = 10
@@ -609,7 +617,7 @@ def main() -> None:
     log("")
     log("=" * 78)
     log("DONE -- all source checks passed against the live API.")
-    log("  raw_samples/ holds the downloaded data; this log is the evidence.")
+    log("  data/raw/ holds the downloaded data; this log is the evidence.")
     log("=" * 78)
     log.save()
 

@@ -181,11 +181,11 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 
 两组数据有 **446 条重叠**（同时命中 IT 和对照组关键词），已在 Stage 2 折叠为 IT 组，保证两组互斥 —— 否则"IT 溢价"会变成部分自己和自己比。
 
-地区目录 `raw_samples/regions.json` 记录实测发现的 **78 个地区**（由探测 1–92 号编码得出，不是硬编码的清单）。
+地区目录 [`data/raw/regions.json`](data/raw/regions.json) 记录实测发现的 **78 个地区**（由探测 1–92 号编码得出，不是硬编码的清单）。
 
 ### 数据源验证（早期阶段）
 
-`feasibility_check.py` 对线上 API 跑了 8 项检查，全部通过，输出见 [`verification_log.txt`](verification_log.txt)。
+[`stage0_source_verification/verify_sources.py`](stage0_source_verification/verify_sources.py) 对线上 API 跑了 8 项检查，全部通过，输出见 [`logs/verification_log.txt`](logs/verification_log.txt)。
 
 | 检查项 | 结果 |
 |---|---|
@@ -195,6 +195,8 @@ IT 子集通过 `text=` 关键词 × `region_code` 切片获得：
 | RegEx 薪资解析 vs `salary_min` | **100% 一致** |
 | RegEx 技能抽取 | 1С / python / sql / REST / Excel / Linux / C++ 等 22 类 |
 | `creation-date` 跨度 | **2020-08 … 2026-09** |
+
+> 上表的数字是那次运行测得的。`logs/verification_log.txt` 每次运行都会被覆盖，而 Trudvsem 的实时数据库总量会变动（重新运行时全国总量显示 494,808 而非 522,303），所以日志里的绝对值与上表不同是正常的 —— 要比较的是结论，不是瞬时计数。
 
 ---
 
@@ -237,14 +239,14 @@ re.search(r"c\+\+", "С++", re.I)   # -> None   静默漏掉
 
 ## API 注意事项（重跑必读）
 
-这个 API 有几个**静默失败**模式，已在 `feasibility_check.py` 的 docstring 中完整记录：
+这个 API 有几个**静默失败**模式，已在 `stage0_source_verification/verify_sources.py` 的 docstring 中完整记录：
 
 ### 未知参数名被静默忽略，不报错
 
 `regionCode`、`regionId`、`area`、`regionName` 全部返回**全国数据**并给 HTTP 200，没有任何警告。正确的名字是 `region_code`（下划线）。
 
 > ⚠️ 不校验返回 `region.name` 的客户端，会在「以为筛了地区」的情况下拿全国数据训练模型。
-> `feasibility_check.py` 对每次请求都断言返回的地区名。
+> `stage0_source_verification/verify_sources.py` 对每次请求都断言返回的地区名。
 
 ### 分页已失效（行为在实测期间发生了变化）
 
@@ -320,64 +322,92 @@ Get-Process python | Stop-Process -Force  # 清理
 
 ## 目录结构
 
+目录按**管道阶段**组织：属于哪个阶段的文件就放在哪个阶段文件夹里，多个阶段共用的放 `common/`。
+
 ```
 it-salary-ru/
-├── README.md                     本文件（中文）
-├── README.en.md                  English version
-├── feasibility_check.py          数据源验证脚本（8 项检查）
-├── collect.py                    Stage 1 采集器（8 并发 worker）
-├── textmining.py                 纯函数文本挖掘（技能 / 薪资 / 经验正则）
-├── build_features.py             Stage 2 加工：清洗、修复、去重、质量门禁
-├── train_models.py               Stage 3 建模：M0→M3 对比、误差分析、泄漏审查
-├── make_data_dictionary.py       从原始数据生成数据字典
-├── tests/                        Stage 4 验证套件（94 项，无需网络）
-│   ├── test_textmining.py            43 项：解析规则
-│   ├── test_repair_policy.py         15 项：修复策略
-│   ├── test_leakage.py               12 项：泄漏不变量
-│   ├── test_pipeline_integration.py  24 项：端到端 + 语料不变量
-│   └── fixtures/raw_sample.json      6 条手工构造的冻结输入
-├── verification_log.txt          验证脚本输出
-├── collection_log.txt            采集运行日志
-├── data/processed/               分析表（*.parquet 不入库，可重新生成）
-├── docs/
-│   ├── data_dictionary.md        数据字典（由脚本从数据算出，非手写）
-│   ├── data_quality_report.md    Stage 2 质量门禁与修复影响
-│   ├── model_report.md           Stage 3 模型对比、泄漏审查、误差分析
-│   ├── validation_report.md      Stage 4 验证报告（含未覆盖项）
-│   └── fig_*.png                 Stage 3 图表
-├── raw_samples/                  真实抓取的数据
-│   ├── regions.json                  78 个地区目录（实测得出，非硬编码）
-│   ├── sample_3_records.json         3 条完整记录（人类可读）
-│   ├── trudvsem_it_harvest.json      IT 岗位采集结果
-│   ├── trudvsem_control_harvest.json 非 IT 对照组
-│   └── verification_sample.json      验证脚本抓的样本
-└── api_investigation/            API 行为逆向的探测脚本
-    ├── probe_structure.py           记录字段结构
-    ├── probe_params.py              参数名（如何发现 region_code）
-    ├── probe_paging.py              分页参数
-    ├── probe_limits.py              limit/offset 组合极限
-    ├── probe_paging_boundary.py     offset×limit 假设的证伪
-    ├── probe_latency.py             延迟归因（服务端 vs 握手）
-    ├── probe_throttle.py            深度 offset 失效与并发验证
-    └── probe_concurrency.py         并发扩展性（4 vs 8 worker）
+├── README.md / README.en.md / requirements.txt
+├── .github/workflows/tests.yml     CI：双 Python 版本跑测试 + Stage 1–3
+│
+├── common/                         跨阶段共用
+│   ├── paths.py                        全部路径的唯一来源
+│   └── textmining.py                   技能 / 薪资 / 经验正则（Stage 2 与 3 共用）
+│
+├── stage0_source_verification/     Stage 0 —— 这个数据源到底能不能用？
+│   ├── verify_sources.py               8 项数据源检查（原来是 feasibility_check.py）
+│   └── probes/                         API 行为逆向的 8 个探测脚本
+│       ├── probe_structure.py             记录字段结构
+│       ├── probe_params.py                参数名（如何发现 region_code）
+│       ├── probe_paging.py                分页参数
+│       ├── probe_limits.py                limit/offset 组合极限
+│       ├── probe_paging_boundary.py       offset×limit 假设的证伪
+│       ├── probe_latency.py               延迟归因（服务端 vs 握手）
+│       ├── probe_throttle.py              深度 offset 失效与并发验证
+│       └── probe_concurrency.py           并发扩展性（4 vs 8 worker）
+│
+├── stage1_collection/              Stage 1 —— 采集原始数据
+│   ├── collect.py                      8 并发 worker
+│   ├── make_data_dictionary.py         从原始数据生成数据字典
+│   └── probe_textmining_edges.py       解析边缘情况探测（证据）
+│
+├── stage2_processing/              Stage 2 —— 原始记录 → 可建模的表
+│   └── build_features.py               清洗、修复、去重、质量门禁
+│
+├── stage3_analytics/               Stage 3 —— 建模与对比
+│   ├── train_models.py                 M0→M3 对比、误差分析、泄漏审查
+│   └── probe_seed_robustness.py       七种子稳健性探测（证据）
+│
+├── tests/                          Stage 4 —— 验证套件（94 项，无需网络）
+│   ├── test_textmining.py                  43 项：解析规则
+│   ├── test_repair_policy.py               15 项：修复策略
+│   ├── test_leakage.py                     12 项：泄漏不变量
+│   ├── test_pipeline_integration.py        24 项：端到端 + 语料不变量
+│   └── fixtures/raw_sample.json            6 条手工构造的冻结输入
+│
+├── data/
+│   ├── raw/                        入库的不可变输入（~13 MB）
+│   │   ├── regions.json                78 个地区目录（实测得出，非硬编码）
+│   │   ├── sample_3_records.json       3 条完整记录（人类可读）
+│   │   ├── trudvsem_it_harvest.json.gz     IT 岗位采集结果
+│   │   └── trudvsem_control_harvest.json.gz 非 IT 对照组
+│   └── processed/                  派生产物，不入库，可重新生成
+│       └── vacancies.parquet           分析表（19,578 行 × 72 列）
+│
+├── docs/                           给读者看的报告
+│   ├── data_dictionary.md              数据字典（由脚本从数据算出，非手写）
+│   ├── data_quality_report.md          Stage 2 质量门禁与修复影响
+│   ├── model_report.md                 Stage 3 模型对比、泄漏审查、误差分析
+│   ├── validation_report.md            Stage 4 验证报告（含未覆盖项）
+│   └── figures/                        Stage 3 图表
+│
+└── logs/                           每次运行的输出
+    ├── verification_log.txt
+    └── collection_log.txt
 ```
 
-`api_investigation/` 不是草稿 —— 它是「我怎么知道 `regionCode` 不行」「我怎么知道分页失效了」的可复现证据。
+`stage0_source_verification/probes/` 不是草稿 —— 它是「我怎么知道 `regionCode` 不行」「我怎么知道分页失效了」的可复现证据。各阶段文件夹里的 `probe_*.py` 同理。
+
+**路径的唯一来源是 [`common/paths.py`](common/paths.py)。** 其他任何地方都不应该用 `__file__` 拼路径 —— 这次重构之前，五个脚本各自算路径，所以搬一个目录要改五处代码加 CI、gitignore 和文档。
 
 ---
 
 ## 如何运行
 
+**所有命令都从仓库根目录运行**，用相对路径调用脚本。每个脚本会自己把仓库根加入 `sys.path`，所以从别处调用也可以。
+
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
 pip install -r requirements.txt
 
-python collect.py                    # Stage 1 采集（约 25 分钟）
-python build_features.py             # Stage 2 加工 → 分析表 + 质量报告
-python train_models.py               # Stage 3 建模 → 模型报告（约 45 秒）
-python -m pytest tests -v            # Stage 4 验证（94 项，约 12 秒）
-python make_data_dictionary.py       # 从原始数据重新生成数据字典
-python feasibility_check.py          # 8 项数据源验证检查
+# 日常用到的三个（数据已在库中，无需重新采集）
+python stage2_processing/build_features.py            # Stage 2 → 分析表 + 质量报告（约 30 秒）
+python stage3_analytics/train_models.py               # Stage 3 → 模型报告（约 45 秒）
+python -m pytest tests -v                             # Stage 4 验证（94 项，约 12 秒）
+
+# 按需运行
+python stage1_collection/make_data_dictionary.py      # 重新生成数据字典
+python stage1_collection/collect.py                   # Stage 1 采集（约 25 分钟，会访问线上 API）
+python stage0_source_verification/verify_sources.py   # 8 项数据源检查（会访问线上 API）
 ```
 
 `collect.py` 支持参数：`--budget N`（请求上限）、`--seconds N`（时间上限）、`--phase national|grid|both`（只跑全国扫描或地区网格）、`--refresh-regions`（重新探测地区目录）。中断后区域目录会保留，下次运行自动续跑。

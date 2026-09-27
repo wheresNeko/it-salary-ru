@@ -195,11 +195,11 @@ Permutation importance on the M2 model, measured on 3,000 test rows.
 | 17 | `svd_4` | 0.0023 |
 | 18 | `len_requirements` | 0.0022 |
 
-![importance](fig_importance.png)
+![importance](figures/fig_importance.png)
 
 ## 6. Error analysis
 
-![diagnostics](fig_model_diagnostics.png)
+![diagnostics](figures/fig_model_diagnostics.png)
 
 Mean absolute error and bias in RUR by subgroup, for the M2 model. Bias
 near zero means the model is not systematically over- or under-pricing that

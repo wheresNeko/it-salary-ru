@@ -48,8 +48,8 @@ LightGBM package would not change any conclusion here.
 
 OUTPUT
 ------
-    docs/model_report.md          comparison, error analysis, leakage audit
-    docs/fig_*.png                figures for the write-up
+    docs/model_report.md                comparison, error analysis, leakage audit
+    docs/figures/fig_*.png              figures for the write-up
 """
 
 from __future__ import annotations
@@ -101,7 +101,13 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
-from textmining import SKILL_SLUGS
+# --- repository bootstrap -------------------------------------------------
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from common import paths  # noqa: E402  (must follow the sys.path fix)
+from common.textmining import SKILL_SLUGS  # noqa: E402
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -112,11 +118,11 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # `score`-adjacent code, rather than globally.
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 
-HERE = pathlib.Path(__file__).resolve().parent
-TABLE = HERE / "data" / "processed" / "vacancies.parquet"
-DOCS = HERE / "docs"
-DOCS.mkdir(exist_ok=True)
-REPORT = DOCS / "model_report.md"
+TABLE = paths.TABLE
+DOCS = paths.DOCS
+FIGURES = paths.DOCS_FIGURES
+REPORT = paths.MODEL_REPORT
+paths.ensure_output_dirs()
 
 TARGET = "log_salary"
 TEST_FRACTION = 0.25
@@ -637,7 +643,7 @@ def main() -> None:
                  it_premium, (acc, majority, f1, edges), median_rur,
                  Xtr_lin.shape[1], mlp_info, seed_scores)
 
-    print(f"  wrote {REPORT.relative_to(HERE)}  ({time.time()-t0:.0f}s)")
+    print(f"  wrote {paths.rel(REPORT)}  ({time.time()-t0:.0f}s)")
 
 
 def make_figures(y_te, preds, imp_rank, median_rur):
@@ -666,7 +672,7 @@ def make_figures(y_te, preds, imp_rank, median_rur):
     ax.set_title("Residuals")
     ax.legend(fontsize=7)
     fig.tight_layout()
-    fig.savefig(DOCS / "fig_model_diagnostics.png", dpi=130)
+    fig.savefig(FIGURES / "fig_model_diagnostics.png", dpi=130)
     plt.close(fig)
 
     # importance
@@ -676,7 +682,7 @@ def make_figures(y_te, preds, imp_rank, median_rur):
     ax.set_xlabel("increase in MAE when the column is shuffled (log units)")
     ax.set_title("M2 permutation importance, top 18")
     fig.tight_layout()
-    fig.savefig(DOCS / "fig_importance.png", dpi=130)
+    fig.savefig(FIGURES / "fig_importance.png", dpi=130)
     plt.close(fig)
 
 
@@ -870,12 +876,12 @@ def write_report(df, train, test, eval_df, cutoff, results, preds, imp_rank,
     for i, (name, val) in enumerate(imp_rank.head(18).items(), 1):
         a(f"| {i} | `{name}` | {val:.4f} |")
     a("")
-    a("![importance](fig_importance.png)")
+    a("![importance](figures/fig_importance.png)")
     a("")
 
     a("## 6. Error analysis")
     a("")
-    a("![diagnostics](fig_model_diagnostics.png)")
+    a("![diagnostics](figures/fig_model_diagnostics.png)")
     a("")
     a("Mean absolute error and bias in RUR by subgroup, for the M2 model. Bias")
     a("near zero means the model is not systematically over- or under-pricing that")

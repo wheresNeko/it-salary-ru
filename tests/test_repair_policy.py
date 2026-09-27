@@ -19,7 +19,7 @@ import math
 import pandas as pd
 import pytest
 
-from build_features import Gates, dedupe, derive, flatten, run_gates
+from stage2_processing.build_features import Gates, dedupe, derive, flatten, run_gates
 
 
 def record(**overrides) -> dict:

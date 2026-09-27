@@ -10,7 +10,7 @@ env/
 # ---- Jupyter ----
 .ipynb_checkpoints/
 
-# ---- Pipeline outputs (regenerable from raw_samples/) ----
+# ---- Pipeline outputs (regenerable from data/raw/) ----
 *.parquet
 .pytest_cache/
 .coverage
@@ -19,8 +19,18 @@ htmlcov/
 # ---- Raw harvests ----
 # The committed form is gzipped (.json.gz, ~13 MB for both sets).
 # The uncompressed form is 106 MB of pretty-printed JSON -- keep it local only.
-raw_samples/trudvsem_it_harvest.json
-raw_samples/trudvsem_control_harvest.json
+data/raw/trudvsem_it_harvest.json
+data/raw/trudvsem_control_harvest.json
+
+# Written by stage0_source_verification/verify_sources.py on each run. Not
+# committed: it is a small live sample the script regenerates, and the evidence
+# for the source is the script plus logs/verification_log.txt.
+data/raw/verification_sample.json
+
+# ---- Probe scratch output ----
+# Probes write their evidence directory-by-directory; the reproducible part is
+# the script itself, which is committed.
+stage0_source_verification/probes/*.txt
 
 # ---- Editors / OS ----
 .vscode/

@@ -17,15 +17,15 @@ import sys
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
-# This probe lives in api_investigation/; train_models.py is one level up.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+# This probe sits one level below the repository root.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 
-import train_models as tm
+from stage3_analytics import train_models as tm
 
 df = tm.load()
 data = df[df[tm.TARGET].notna()].copy()

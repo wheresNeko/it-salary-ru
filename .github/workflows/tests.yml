@@ -45,13 +45,17 @@ jobs:
       - name: Run the test suite
         run: python -m pytest tests -v
 
-      # Stage 2 and Stage 3 are run as well, because the suite tests their
-      # behaviour while these also prove they still execute end to end.
+      # Each stage is run as well, because the suite tests their behaviour while
+      # these also prove the scripts still execute end to end from their new
+      # home. Every path below is repository-root relative.
+      - name: Stage 1 -- data dictionary
+        run: python stage1_collection/make_data_dictionary.py
+
       - name: Stage 2 -- data processing
-        run: python build_features.py
+        run: python stage2_processing/build_features.py
 
       - name: Stage 3 -- predictive analytics
-        run: python train_models.py
+        run: python stage3_analytics/train_models.py
 
       - name: Upload the generated reports
         if: always()
@@ -59,7 +63,8 @@ jobs:
         with:
           name: reports-py${{ matrix.python-version }}
           path: |
+            docs/data_dictionary.md
             docs/data_quality_report.md
             docs/model_report.md
-            docs/fig_*.png
+            docs/figures/*.png
           if-no-files-found: warn

@@ -16,10 +16,11 @@ import pathlib
 import pandas as pd
 import pytest
 
-import build_features as bf
-import train_models as tm
+from common import paths
+from stage2_processing import build_features as bf
+from stage3_analytics import train_models as tm
 
-FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "raw_sample.json"
+FIXTURE = paths.RAW_FIXTURE
 
 
 def table_schema() -> set[str]:

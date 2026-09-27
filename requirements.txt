@@ -17,6 +17,7 @@ pytest>=7
 #   pip install torch --index-url https://download.pytorch.org/whl/cu128
 # torch>=2.0
 
-# Optional -- HTML parsing, used only by the DOM check in feasibility_check.py.
+# Optional -- HTML parsing, used only by the DOM check in
+# stage0_source_verification/verify_sources.py.
 # beautifulsoup4>=4.12
 # lxml>=5.0

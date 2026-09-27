@@ -475,7 +475,7 @@ claims such as "`regionCode` does not work" and "paging stopped working".
 
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
-pip install requests pandas pyarrow
+pip install -r requirements.txt
 
 python collect.py                    # Stage 1 collection (~25 minutes)
 python build_features.py             # Stage 2 -> analytical table + report
@@ -489,8 +489,9 @@ python feasibility_check.py          # 8 source-verification checks
 `--phase national|grid|both`, and `--refresh-regions`. An interrupted run keeps
 its region directory and resumes from it.
 
-Dependencies: `requests` (collection), `pandas` + `pyarrow` (processing). The
-DOM-parsing stage will additionally need `pip install beautifulsoup4 lxml`.
+Dependencies are in [`requirements.txt`](requirements.txt). `torch` is an
+**optional** GPU path: without it Stage 3 falls back to scikit-learn's MLP, and
+no test depends on it.
 
 Environment: Anaconda Python 3.14.6 at `C:\ProgramData\anaconda3\python.exe`.
 

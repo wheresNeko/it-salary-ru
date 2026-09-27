@@ -29,14 +29,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          # setup-python's pip caching hashes a dependency manifest, so this
+          # needs requirements.txt to exist. Its absence is what made the first
+          # run fail at this step, before any test executed.
           cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # torch is intentionally absent: Stage 3 falls back to sklearn's MLP
+          # torch is deliberately absent: Stage 3 falls back to sklearn's MLP
           # when CUDA is unavailable, and no test depends on the GPU path.
-          pip install requests pandas pyarrow scikit-learn numpy pytest matplotlib
+          pip install -r requirements.txt
 
       - name: Run the test suite
         run: python -m pytest tests -v

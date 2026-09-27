@@ -370,7 +370,7 @@ it-salary-ru/
 
 ```powershell
 cd C:\Users\Neko\Desktop\Workspace\it-salary-ru
-pip install requests pandas pyarrow
+pip install -r requirements.txt
 
 python collect.py                    # Stage 1 采集（约 25 分钟）
 python build_features.py             # Stage 2 加工 → 分析表 + 质量报告
@@ -382,7 +382,7 @@ python feasibility_check.py          # 8 项数据源验证检查
 
 `collect.py` 支持参数：`--budget N`（请求上限）、`--seconds N`（时间上限）、`--phase national|grid|both`（只跑全国扫描或地区网格）、`--refresh-regions`（重新探测地区目录）。中断后区域目录会保留，下次运行自动续跑。
 
-依赖：`requests`（采集）、`pandas` + `pyarrow`（加工）。DOM 解析阶段还需要 `pip install beautifulsoup4 lxml`。
+依赖见 [`requirements.txt`](requirements.txt)。`torch` 是**可选**的 GPU 路径 —— 缺失时 Stage 3 自动回退到 sklearn 的 MLP，测试套件也不依赖它。
 
 环境：Anaconda Python 3.14.6，位置 `C:\ProgramData\anaconda3\python.exe`。
 
